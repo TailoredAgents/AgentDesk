@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { getDatabase, type Database } from "./db";
+import { getDatabase, probeReadiness, type Database } from "./db";
 import * as tables from "./db/schema";
 import { SAMPLE_WORKSPACE_ID } from "./db/seed-data";
 import { getCapabilities } from "./integrations";
@@ -627,7 +627,5 @@ export async function getHealth(): Promise<{
   database: "ok";
   storage: "postgresql" | "pglite";
 }> {
-  const { db, storage } = await getDatabase();
-  await db.execute(sql`SELECT 1`);
-  return { database: "ok", storage };
+  return probeReadiness();
 }

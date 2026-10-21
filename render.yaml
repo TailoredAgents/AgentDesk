@@ -8,7 +8,7 @@ services:
     plan: 0.5c-512mb
     numInstances: 1
     buildCommand: npm ci --include=dev && npm run build
-    preDeployCommand: npm run db:migrate && npm run db:seed
+    preDeployCommand: npm run config:check && npm run db:migrate && npm run db:seed
     startCommand: npm run start
     healthCheckPath: /api/health
     autoDeployTrigger: checksPass

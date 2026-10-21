@@ -6,9 +6,10 @@ import { drizzle as pgliteDrizzle } from "drizzle-orm/pglite";
 import { drizzle as postgresDrizzle } from "drizzle-orm/node-postgres";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { Pool } from "pg";
+import { Client, Pool } from "pg";
 import * as schema from "./schema";
 import { seedDatabase } from "./seed";
+import { SAMPLE_WORKSPACE_ID } from "./seed-data";
 
 export type Database = PgDatabase<PgQueryResultHKT, typeof schema>;
 type DatabaseHandle = {
@@ -62,7 +63,7 @@ export async function migrateDatabase(
   });
 }
 
-async function initialize(): Promise<DatabaseHandle> {
+async function connectDatabase(): Promise<DatabaseHandle> {
   const url = process.env.DATABASE_URL;
   if (process.env.NODE_ENV === "production" && !url)
     throw new Error(
@@ -73,8 +74,10 @@ async function initialize(): Promise<DatabaseHandle> {
     const pool = new Pool({
       connectionString: url,
       max: 8,
-      connectionTimeoutMillis: 10_000,
+      connectionTimeoutMillis: 2_500,
       idleTimeoutMillis: 30_000,
+      statement_timeout: 15_000,
+      lock_timeout: 5_000,
     });
     pool.on("error", () =>
       console.error(
@@ -105,14 +108,87 @@ async function initialize(): Promise<DatabaseHandle> {
       close: () => client.close(),
     };
   }
+  return handle;
+}
+
+async function initialize(): Promise<DatabaseHandle> {
+  const handle = await connectDatabase();
   try {
-    await migrateDatabase(handle.db, handle.storage);
-    if (!url && process.env.AGENTDESK_SKIP_AUTO_SEED !== "1")
+    // Production schema changes belong to the explicit pre-deploy migration step.
+    // Requests must never perform DDL or wait on the migration advisory lock.
+    if (process.env.NODE_ENV !== "production") {
+      await migrateDatabase(handle.db, handle.storage);
+    }
+    if (
+      handle.storage === "pglite" &&
+      process.env.AGENTDESK_SKIP_AUTO_SEED !== "1"
+    )
       await seedDatabase(handle.db);
     return handle;
   } catch (error) {
     await handle.close();
     throw error;
+  }
+}
+
+/** Explicit CLI migration path, independent of request initialization and its singleton. */
+export async function migrateConfiguredDatabase() {
+  const handle = await connectDatabase();
+  try {
+    await migrateDatabase(handle.db, handle.storage);
+    return { storage: handle.storage };
+  } finally {
+    await handle.close();
+  }
+}
+
+/** A separate short-lived connection keeps readiness independent of the app pool,
+ * schema initialization, and long-running transactions. The complete probe is bounded. */
+export async function probeReadiness(): Promise<{
+  database: "ok";
+  storage: "postgresql" | "pglite";
+}> {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    // Development still initializes its local sample database on first use.
+    const { db, storage } = await getDatabase();
+    await db.execute(sql`SELECT 1`);
+    return { database: "ok", storage };
+  }
+  const client = new Client({
+    connectionString: url,
+    connectionTimeoutMillis: 1_500,
+    query_timeout: 1_500,
+    statement_timeout: 1_500,
+    lock_timeout: 1_000,
+  });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      (async () => {
+        await client.connect();
+        const result = await client.query(
+          "SELECT id FROM workspaces WHERE id = $1",
+          [SAMPLE_WORKSPACE_ID],
+        );
+        if (!result.rowCount)
+          throw new Error(
+            "Database schema and sample workspace are not ready.",
+          );
+      })(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Database readiness timed out.")),
+          2_700,
+        );
+      }),
+    ]);
+    return { database: "ok", storage: "postgresql" };
+  } finally {
+    if (timer) clearTimeout(timer);
+    // pg destroys an active query's stream when ending the client. Do not await
+    // connection cleanup past the readiness deadline.
+    void client.end().catch(() => undefined);
   }
 }
 

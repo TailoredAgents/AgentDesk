@@ -48,3 +48,5 @@ jobs:
           node --input-type=module -e "import pg from 'pg'; const pool = new pg.Pool({connectionString: process.env.DATABASE_URL}); try { await pool.query('CREATE DATABASE agentdesk_test_domain'); } finally { await pool.end(); }"
           npx tsx --test tests/domain.test.ts
       - run: npm run build
+      - name: Verify production startup and protected HTTP routes
+        run: npm run test:production

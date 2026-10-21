@@ -1,14 +1,11 @@
 import "dotenv/config";
-import { closeDatabase, getDatabase } from "../src/lib/db";
+import { migrateConfiguredDatabase } from "../src/lib/db";
 
-process.env.AGENTDESK_SKIP_AUTO_SEED = "1";
 async function main() {
-  const { storage } = await getDatabase();
+  const { storage } = await migrateConfiguredDatabase();
   console.log(`AgentDesk migrations are current (${storage}).`);
 }
-main()
-  .catch((error) => {
-    console.error(error instanceof Error ? error.message : "Migration failed.");
-    process.exitCode = 1;
-  })
-  .finally(closeDatabase);
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : "Migration failed.");
+  process.exitCode = 1;
+});

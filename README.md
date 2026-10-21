@@ -115,7 +115,7 @@ npm run db:migrate
 npm run db:seed
 ```
 
-Migrations are applied in filename order and recorded with checksums. Applied migration files must not be edited; add the next numbered migration. PostgreSQL migration execution uses an advisory lock. The seed is repeatable: if the sample workspace already exists, its saved edits are preserved. Running it again does not reset a demo.
+Migrations are applied in filename order and recorded with checksums. Applied migration files must not be edited; add the next numbered migration. PostgreSQL migration execution uses an advisory lock. Production migrations run explicitly through `npm run db:migrate`, before the service starts; HTTP requests never run production migrations. Local development still migrates automatically. The seed is repeatable: if the sample workspace already exists, its saved edits are preserved. Running it again does not reset a demo.
 
 To begin a fresh local demonstration without deleting prior work, stop the server, set `PGLITE_DATA_DIR=.agentdesk/fresh-demo` in `.env`, and restart. Use a unique directory for each isolated demo. For hosted PostgreSQL, use a separate database for a clean environment. Back up persistent data before schema or environment changes.
 
@@ -127,12 +127,14 @@ The checked-in [render.yaml](render.yaml) describes a Node web service and a pri
 2. Review the web/database plans and region in `render.yaml`. The blueprint is deliberately configured for a single application instance and durable PostgreSQL.
 3. Supply a unique `DEMO_PASSWORD` of at least 12 characters when Render prompts. The blueprint generates `SESSION_SECRET`, wires `DATABASE_URL` to the database's private connection string, and sets `APP_URL` from the service's `RENDER_EXTERNAL_URL`.
 4. Optionally add `OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_TRANSCRIBE_MODEL` in the service's Environment settings. A key is not required to review saved sample results. When attaching a custom domain, replace the blueprint's `APP_URL` self-reference with that exact public HTTPS origin and apply it to the service.
-5. Render builds with `npm ci --include=dev && npm run build`, applies migrations and the idempotent seed before deployment, and runs `npm run start`. The service binds to `0.0.0.0` and uses Render's `PORT`.
+5. Render builds with `npm ci --include=dev && npm run build`. Before deployment it runs `npm run config:check`, applies migrations, and runs the idempotent seed. `npm run start` repeats the configuration check before starting the service, which binds to `0.0.0.0` and uses Render's `PORT`.
 6. Confirm `/api/health` is healthy, the sign-in screen protects the workspace, and an approved sample task persists after a restart. Keep the sample designation visible during the pilot.
 
 The production app refuses local database fallback and fails closed when access protection is not configured. Uploaded audio is never written to the service filesystem. The PostgreSQL resource's empty public IP allow list disables external database access; the web service uses Render's private network. Adjust that allow list deliberately if you later need administrative access from outside Render. See the [Blueprint reference](https://render.com/docs/blueprint-spec) for hosting settings.
 
 `npm run build` compiles the production application; `npm run start` runs in production mode and therefore requires PostgreSQL and access credentials even when launched locally. Continue using `npm run dev` for the zero-configuration embedded-database experience.
+
+Configuration errors now stop deployment immediately with a message naming the setting to correct, without printing secret values. For example, a short `DEMO_PASSWORD` fails the configuration check instead of leaving a running process that silently fails health checks. `/api/health` uses a bounded, read-only database probe that verifies the seeded workspace and does not acquire migration locks. If it fails, the server logs distinguish configuration problems from database readiness failures. A successful build alone does not mean Render has routed traffic to the new service.
 
 ## Access and client-data boundaries
 
@@ -147,8 +149,6 @@ Pilot request limits are in-process: 20 AI operations per 10 minutes across the 
 ## Validation and development
 
 See the [validation record and screenshots](docs/VALIDATION.md) for the initial verified results and remaining provider/deployment checks.
-
-See [the validation record](docs/VALIDATION.md) for completed automated checks, browser walkthroughs, screenshots, and untested external capabilities.
 
 ```powershell
 npm run typecheck
@@ -166,6 +166,6 @@ Remove-Item Env:TEST_DATABASE_URL
 
 The PostgreSQL test target must use a loopback hostname and have no workspace records. The suite creates its own sample data and leaves it in that disposable database; remove the test database or its dedicated container afterward. Never point this setting at a development or production workspace.
 
-[GitHub Actions](.github/workflows/ci.yml) installs locked dependencies, starts PostgreSQL 17, migrates and seeds it, then runs type checking, PGlite tests, the domain suite against a separate fresh PostgreSQL database, and the production build. CI uses no OpenAI key and never sends real messages. Browser inspection remains part of the release process: check desktop/mobile Today, edit/approve/reject Review actions, complete a listing task, change communication preferences, inspect Team totals, and verify protected access when credentials are enabled.
+[GitHub Actions](.github/workflows/ci.yml) installs locked dependencies, starts PostgreSQL 17, migrates and seeds it, then runs type checking, PGlite tests, the domain suite against a separate fresh PostgreSQL database, and the production build. It then starts the compiled application and tests health response time, protected access, sign-in, and an authenticated workspace read using `npm run test:production`. This smoke test only accepts a local disposable database named `agentdesk_test` or `agentdesk_test_*`. CI uses no OpenAI key and never sends real messages. Browser inspection remains part of the release process: check desktop/mobile Today, edit/approve/reject Review actions, complete a listing task, change communication preferences, inspect Team totals, and verify protected access when credentials are enabled.
 
 Health checks expose only service readiness. Application errors return concise messages; server logs include error categories without client content. Treat database backups, monitoring, alerting, and provider spending limits as deployment responsibilities before expanding a pilot.

@@ -3,8 +3,10 @@ import { after, before, test } from "node:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { eq } from "drizzle-orm";
-import { closeDatabase, getDatabase } from "../src/lib/db";
+import { createServer, type Socket } from "node:net";
+import { eq, sql } from "drizzle-orm";
+import { Client } from "pg";
+import { closeDatabase, getDatabase, probeReadiness } from "../src/lib/db";
 import { seedDatabase } from "../src/lib/db/seed";
 import * as tables from "../src/lib/db/schema";
 import {
@@ -348,19 +350,17 @@ test("a database constraint failure rolls back earlier changes in the approval t
     generated(["crm_note", "message"]),
   );
   const { db } = await getDatabase();
-  await db
-    .insert(tables.approvedMessages)
-    .values({
-      id: "constraint-fixture",
-      workspaceId: "willow-collective",
-      agentId: "jordan",
-      clientId: "sarah",
-      propertyId: "willow",
-      sourceActionId: pkg.actions[1].id,
-      subject: "Existing fixture",
-      body: "Simulated conflicting record",
-      status: "approved",
-    });
+  await db.insert(tables.approvedMessages).values({
+    id: "constraint-fixture",
+    workspaceId: "willow-collective",
+    agentId: "jordan",
+    clientId: "sarah",
+    propertyId: "willow",
+    sourceActionId: pkg.actions[1].id,
+    subject: "Existing fixture",
+    body: "Simulated conflicting record",
+    status: "approved",
+  });
   const before = await getWorkspace();
   await assert.rejects(
     reviewPackage(pkg.id, {
@@ -441,45 +441,37 @@ test("missing records, cross-tenant writes and mismatched entity links are rejec
 test("an existing second tenant cannot be read or mutated through the sample scope", async () => {
   const { db } = await getDatabase();
   const sample = await getWorkspace();
-  await db
-    .insert(tables.workspaces)
-    .values({
-      id: "second-tenant",
-      name: "Separate brokerage",
-      sample: false,
-      referenceDate: "2026-10-21",
-    });
-  await db
-    .insert(tables.agents)
-    .values({
-      ...sample.agents[0],
-      id: "private-agent",
-      workspaceId: "second-tenant",
-      name: "Private Agent",
-    });
-  await db
-    .insert(tables.clients)
-    .values({
-      ...sample.clients[0],
-      id: "private-client",
-      workspaceId: "second-tenant",
-      agentId: "private-agent",
-      name: "Private Client",
-    });
-  await db
-    .insert(tables.tasks)
-    .values({
-      id: "private-task",
-      workspaceId: "second-tenant",
-      agentId: "private-agent",
-      clientId: "private-client",
-      title: "Private tenant task",
-      detail: "Must stay in its workspace.",
-      dueDate: null,
-      status: "open",
-      priority: "normal",
-      source: "Test fixture",
-    });
+  await db.insert(tables.workspaces).values({
+    id: "second-tenant",
+    name: "Separate brokerage",
+    sample: false,
+    referenceDate: "2026-10-21",
+  });
+  await db.insert(tables.agents).values({
+    ...sample.agents[0],
+    id: "private-agent",
+    workspaceId: "second-tenant",
+    name: "Private Agent",
+  });
+  await db.insert(tables.clients).values({
+    ...sample.clients[0],
+    id: "private-client",
+    workspaceId: "second-tenant",
+    agentId: "private-agent",
+    name: "Private Client",
+  });
+  await db.insert(tables.tasks).values({
+    id: "private-task",
+    workspaceId: "second-tenant",
+    agentId: "private-agent",
+    clientId: "private-client",
+    title: "Private tenant task",
+    detail: "Must stay in its workspace.",
+    dueDate: null,
+    status: "open",
+    priority: "normal",
+    source: "Test fixture",
+  });
   const scoped = await getWorkspace();
   assert.equal(
     scoped.agents.some((agent) => agent.id === "private-agent"),
@@ -509,19 +501,17 @@ test("an existing second tenant cannot be read or mutated through the sample sco
     domainError("INVALID_LINK"),
   );
   await assert.rejects(
-    db
-      .insert(tables.tasks)
-      .values({
-        id: "invalid-tenant-task",
-        workspaceId: "willow-collective",
-        agentId: "private-agent",
-        title: "Invalid tenant link",
-        detail: "Must fail the composite foreign key.",
-        dueDate: null,
-        status: "open",
-        priority: "normal",
-        source: "Test fixture",
-      }),
+    db.insert(tables.tasks).values({
+      id: "invalid-tenant-task",
+      workspaceId: "willow-collective",
+      agentId: "private-agent",
+      title: "Invalid tenant link",
+      detail: "Must fail the composite foreign key.",
+      dueDate: null,
+      status: "open",
+      priority: "normal",
+      source: "Test fixture",
+    }),
   );
   assert.equal(
     (await getWorkspace({ workspaceId: "second-tenant" })).tasks[0].status,
@@ -552,4 +542,60 @@ test("task completion is idempotent and style and task changes survive reopening
     reopened.packages.find((pkg) => pkg.id === "package-sarah")!.status,
     "reviewed",
   );
+});
+
+test(
+  "production initialization and readiness do not wait on the migration advisory lock",
+  { skip: !process.env.TEST_DATABASE_URL },
+  async () => {
+    await closeDatabase();
+    const lockClient = new Client({
+      connectionString: process.env.TEST_DATABASE_URL,
+      connectionTimeoutMillis: 2_500,
+    });
+    await lockClient.connect();
+    await lockClient.query("SELECT pg_advisory_lock(741852963)");
+    Object.assign(process.env, { NODE_ENV: "production" });
+    const started = performance.now();
+    try {
+      const { db } = await getDatabase();
+      await db.execute(sql`SELECT 1`);
+      assert.equal((await probeReadiness()).storage, "postgresql");
+      assert.ok(
+        performance.now() - started < 2_700,
+        "Production initialization must not acquire the migration lock.",
+      );
+    } finally {
+      await lockClient.query("SELECT pg_advisory_unlock(741852963)");
+      await lockClient.end();
+      await closeDatabase();
+      Object.assign(process.env, { NODE_ENV: "test" });
+    }
+  },
+);
+
+test("readiness fails within its deadline when PostgreSQL accepts TCP but never responds", async () => {
+  const sockets = new Set<Socket>();
+  const server = createServer((socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const previousUrl = process.env.DATABASE_URL;
+  process.env.DATABASE_URL = `postgresql://test:unused@127.0.0.1:${address.port}/agentdesk_test_timeout`;
+  const started = performance.now();
+  try {
+    await assert.rejects(probeReadiness());
+    assert.ok(
+      performance.now() - started < 3_000,
+      "Readiness must fail before the HTTP health deadline.",
+    );
+  } finally {
+    if (previousUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = previousUrl;
+    for (const socket of sockets) socket.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });

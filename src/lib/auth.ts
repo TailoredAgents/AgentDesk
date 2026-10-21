@@ -6,6 +6,7 @@ import {
 } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { validateWorkspaceAccessEnvironment } from "./deployment-config";
 
 export const SESSION_COOKIE = "agentdesk_session";
 export const SESSION_SECONDS = 12 * 60 * 60;
@@ -31,9 +32,7 @@ export function authConfiguration() {
     localBypass,
     ready:
       localBypass ||
-      Boolean(
-        password && password.length >= 12 && secret && secret.length >= 32,
-      ),
+      validateWorkspaceAccessEnvironment(process.env).length === 0,
   };
 }
 
