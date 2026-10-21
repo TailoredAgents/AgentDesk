@@ -1,0 +1,50 @@
+name: AgentDesk checks
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: agentdesk_test
+          POSTGRES_USER: agentdesk
+          POSTGRES_PASSWORD: ci-only-local-postgres-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agentdesk -d agentdesk_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://agentdesk:ci-only-local-postgres-password@localhost:5432/agentdesk_test
+      DEMO_PASSWORD: ci-only-workspace-password
+      SESSION_SECRET: ci-only-session-secret-at-least-thirty-two-characters
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run db:migrate
+      - run: npm run db:seed
+      - run: npm run typecheck
+      - run: npm test
+      - name: Test PostgreSQL domain transactions
+        env:
+          TEST_DATABASE_URL: postgresql://agentdesk:ci-only-local-postgres-password@localhost:5432/agentdesk_test_domain
+        run: |
+          node --input-type=module -e "import pg from 'pg'; const pool = new pg.Pool({connectionString: process.env.DATABASE_URL}); try { await pool.query('CREATE DATABASE agentdesk_test_domain'); } finally { await pool.end(); }"
+          npx tsx --test tests/domain.test.ts
+      - run: npm run build

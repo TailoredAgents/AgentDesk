@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=https://render.com/schema/render.yaml.json
+# A protected single-workspace pilot. This file does not deploy anything by itself.
+services:
+  - type: web
+    name: agentdesk
+    runtime: node
+    region: virginia
+    plan: 0.5c-512mb
+    numInstances: 1
+    buildCommand: npm ci --include=dev && npm run build
+    preDeployCommand: npm run db:migrate && npm run db:seed
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: agentdesk-postgres
+          property: connectionString
+      - key: DEMO_PASSWORD
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: APP_URL
+        fromService:
+          name: agentdesk
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+
+databases:
+  - name: agentdesk-postgres
+    region: virginia
+    plan: 0.1c-256mb
+    databaseName: agentdesk
+    user: agentdesk
+    postgresMajorVersion: "17"
+    diskSizeGB: 5
+    ipAllowList: []
