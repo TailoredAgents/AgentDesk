@@ -4,7 +4,7 @@ import { once } from "node:events";
 import net from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 
-// This check may only read an explicitly disposable local PostgreSQL workspace.
+// This check may only exercise an explicitly disposable local PostgreSQL workspace.
 const database = new URL(process.env.DATABASE_URL || "invalid:");
 assert.ok(
   ["localhost", "127.0.0.1", "[::1]"].includes(database.hostname),
@@ -98,7 +98,10 @@ try {
   assert.equal((await request("/")).status, 307);
   const crossSiteLogin = await request("/api/auth/login", {
     method: "POST",
-    headers: { "content-type": "application/json", origin: "https://attacker.example" },
+    headers: {
+      "content-type": "application/json",
+      origin: "https://attacker.example",
+    },
     body: JSON.stringify({ password: env.DEMO_PASSWORD }),
   });
   assert.equal(crossSiteLogin.status, 403);
@@ -117,10 +120,129 @@ try {
     headers: { cookie: cookie.split(";")[0] },
   });
   assert.equal(workspace.status, 200);
-  const data = await workspace.json();
-  assert.equal(data.agents.length, 6);
+  assert.equal((await workspace.json()).agents.length, 6);
+  const sessionHeaders = {
+    cookie: cookie.split(";")[0],
+    "content-type": "application/json",
+    origin: env.APP_URL,
+  };
+  const mutation = (path, body, method = "POST") =>
+    request(path, {
+      method,
+      headers: sessionHeaders,
+      body: JSON.stringify(body),
+    });
+  const pristine = await mutation("/api/demo/reset", {
+    confirmation: "RESTORE FICTIONAL WORKSPACE",
+  });
+  assert.equal(pristine.status, 200);
+  const data = await pristine.json();
+  assert.ok(
+    data.recommendations.length >= 3,
+    "Saved records must surface the presentation follow-ups.",
+  );
+  assert.equal(
+    (await mutation("/api/demo/reset", { confirmation: "wrong phrase" }))
+      .status,
+    400,
+  );
+  const candidate = data.packages.find(
+    (pkg) =>
+      pkg.status === "pending" &&
+      pkg.actions.filter((action) => action.status === "pending").length > 1 &&
+      pkg.actions.some(
+        (action) => action.kind === "message" && action.status === "pending",
+      ),
+  );
+  assert.ok(candidate);
+  const action = candidate.actions.find(
+    (item) => item.kind === "message" && item.status === "pending",
+  );
+  const decision = {
+    decisions: [
+      {
+        id: action.id,
+        status: "approved",
+        body: `${action.body}\n\nReviewed for the fictional presentation.`,
+      },
+    ],
+  };
+  assert.equal(
+    (await mutation(`/api/packages/${candidate.id}/review`, { decisions: [] }))
+      .status,
+    400,
+  );
+  const approvals = await Promise.all([
+    mutation(`/api/packages/${candidate.id}/review`, decision),
+    mutation(`/api/packages/${candidate.id}/review`, decision),
+  ]);
+  approvals.forEach((response) => assert.equal(response.status, 200));
+  const persisted = await (
+    await request("/api/workspace", { headers: sessionHeaders })
+  ).json();
+  const updated = persisted.packages.find((pkg) => pkg.id === candidate.id);
+  assert.equal(
+    updated.actions.find((item) => item.id === action.id).status,
+    "approved",
+  );
+  assert.ok(
+    updated.actions.some((item) => item.status === "pending"),
+    "Undecided actions must remain pending.",
+  );
+  assert.equal(
+    persisted.tasks.length,
+    data.tasks.length,
+    "Approving a message must not create or complete tasks.",
+  );
+  assert.deepEqual(
+    persisted.tasks.map((task) => [task.id, task.status]),
+    data.tasks.map((task) => [task.id, task.status]),
+  );
+  assert.equal(
+    persisted.reviewHistory.filter((item) => item.actionId === action.id)
+      .length,
+    1,
+    "Duplicate approval must have one audit entry.",
+  );
+  assert.equal(
+    persisted.reviewHistory.find((item) => item.actionId === action.id).original
+      .body,
+    action.body,
+  );
+  assert.equal(
+    (await mutation("/api/follow-ups", { agentId: candidate.agentId })).status,
+    200,
+  );
+  assert.equal(
+    (
+      await mutation("/api/conversations", {
+        requestId: crypto.randomUUID(),
+        agentId: candidate.agentId,
+        clientId: candidate.clientId,
+        propertyId: candidate.propertyId,
+        title: "Fictional provider unavailable check",
+        transcript:
+          "The fictional seller asked for a checklist. The photography appointment has not been confirmed.",
+        authorized: true,
+        source: "note",
+      })
+    ).status,
+    503,
+  );
+  const restored = await mutation("/api/demo/reset", {
+    confirmation: "RESTORE FICTIONAL WORKSPACE",
+  });
+  assert.equal(restored.status, 200);
+  const resetData = await restored.json();
+  assert.equal(resetData.reviewHistory.length, 0);
+  assert.equal(resetData.workspace.referenceDate, "2026-10-23");
+  assert.ok(
+    resetData.recommendations.some(
+      (item) => item.status === "ready_for_review",
+    ),
+  );
   console.log(
-    `Production HTTP checks passed: healthy in ${Math.round(elapsed)}ms; sign-in and workspace protection verified.`,
+    `Production HTTP checks passed: healthy in ${Math.round(elapsed)}ms; sign-in, explicit partial approval, concurrent replay, durable audit, recommendations, missing-provider response, and guarded reset verified.`,
   );
 } catch (error) {
   console.error(logs);

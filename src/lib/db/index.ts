@@ -168,7 +168,7 @@ export async function probeReadiness(): Promise<{
       (async () => {
         await client.connect();
         const result = await client.query(
-          "SELECT id FROM workspaces WHERE id = $1",
+          "SELECT id, revision, sample_version FROM workspaces WHERE id = $1",
           [SAMPLE_WORKSPACE_ID],
         );
         if (!result.rowCount)

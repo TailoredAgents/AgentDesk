@@ -4374,3 +4374,220 @@ button:not(:disabled):active {
     right: 9px;
   }
 }
+
+/* Functional controls added without changing the workspace layout. */
+.review-decision {
+  margin-left: auto;
+  max-width: 135px;
+  border: 1px solid #dfe5ed;
+  border-radius: 5px;
+  padding: 5px 7px;
+  color: #718197;
+  background: #f8fafc;
+  font-size: 11px;
+}
+.review-decision.approved {
+  color: #548165;
+  background: #edf5ef;
+}
+.review-decision.rejected {
+  color: #8f6a68;
+  background: #f8efee;
+}
+.approve-all {
+  margin-top: 12px;
+  font-size: 11px;
+}
+.review-effects-preview {
+  margin-top: 22px;
+  padding: 15px 17px;
+  border: 1px solid #e0e7f0;
+  border-radius: 8px;
+  background: #f8faff;
+  color: #73849b;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.review-effects-preview > strong {
+  color: #53667f;
+  font-weight: 600;
+}
+.review-effects-preview ul {
+  padding-left: 18px;
+  margin: 9px 0;
+}
+.review-effects-preview li + li {
+  margin-top: 7px;
+}
+.review-effects-preview p {
+  margin-top: 8px;
+}
+.review-effects-preview b {
+  font-weight: 500;
+}
+.review-history .history-entry {
+  margin: 12px 0;
+}
+.review-history .history-entry strong,
+.review-history .history-entry small {
+  display: block;
+  line-height: 1.8;
+}
+.review-history .history-entry p {
+  font-style: normal;
+  white-space: pre-wrap;
+}
+.voice-recorder {
+  margin-top: 22px;
+  padding: 20px;
+  border: 1px solid #dfe6f0;
+  border-radius: 8px;
+  background: #fafbfe;
+}
+.recorder-heading {
+  display: flex;
+  gap: 10px;
+  color: #7487a3;
+  align-items: flex-start;
+}
+.recorder-heading strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+.recorder-heading p,
+.recording-help {
+  font-size: 12px;
+  line-height: 1.8;
+  color: #8b9ab0;
+  margin-top: 6px;
+}
+.recorder-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 13px;
+  margin-top: 17px;
+  font-size: 12px;
+  color: #7d8ca2;
+}
+.recorder-actions .button {
+  font-size: 12px;
+}
+.recorder-actions small {
+  font-size: 11px;
+}
+.recording-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.recording-status > span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #bb6262;
+}
+.recording-status time {
+  font-variant-numeric: tabular-nums;
+}
+.audio-preview {
+  margin-top: 17px;
+  display: grid;
+  gap: 11px;
+  font-size: 12px;
+  color: #7c8da5;
+}
+.audio-preview strong {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.audio-preview audio {
+  width: 100%;
+  min-width: 0;
+}
+.audio-preview .text-link {
+  justify-self: start;
+  font-size: 11px;
+}
+.compact-upload {
+  padding: 20px;
+  gap: 5px;
+}
+.compact-upload > svg {
+  color: #95a8cb;
+}
+.compact-upload strong {
+  font-size: 13px;
+  text-align: center;
+}
+.disabled-upload {
+  opacity: 0.6;
+  cursor: default;
+}
+.style-preferences {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.agent-preview-field {
+  grid-template-columns: 1fr;
+  margin-bottom: 20px;
+}
+.sample-reset {
+  border-top: 1px solid #e5eaf1;
+  padding-top: 18px;
+  margin-top: 24px;
+  font-size: 12px;
+  color: #8794a5;
+}
+.sample-reset summary {
+  cursor: pointer;
+  line-height: 1.8;
+}
+.sample-reset summary svg {
+  vertical-align: middle;
+  margin-right: 5px;
+}
+.sample-reset .info-strip {
+  margin: 16px 0;
+}
+.sample-reset label {
+  display: block;
+  line-height: 1.8;
+}
+.sample-reset input {
+  display: block;
+  width: 100%;
+  margin: 8px 0 14px;
+  padding: 10px;
+  border: 1px solid #dfe5ee;
+  border-radius: 6px;
+  color: #6b7d94;
+  font-size: 12px;
+}
+.sample-reset .button {
+  font-size: 12px;
+}
+@media (max-width: 650px) {
+  .action-card-heading {
+    flex-wrap: wrap;
+  }
+  .review-decision {
+    max-width: 120px;
+  }
+  .voice-recorder {
+    padding: 16px;
+  }
+  .compact-upload > span:not(.upload-icon) {
+    text-align: center;
+    line-height: 1.8;
+  }
+}
+/* Keep adjacent record-driven sections distinct within the existing Today grid. */
+.priorities-section + .priorities-section {
+  margin-top: 28px;
+}
+.priorities-section > .review-priority + .review-priority {
+  margin-top: 10px;
+}

@@ -8,14 +8,16 @@ import type {
   ProposedAction,
   Task,
   WorkPackage,
+  Commitment,
 } from "../types";
+import { recommendationIdFor } from "../follow-ups";
 
 export const SAMPLE_WORKSPACE_ID = "willow-collective";
 export const sampleWorkspace = {
   id: SAMPLE_WORKSPACE_ID,
   name: "The Willow Collective",
   sample: true,
-  referenceDate: "2026-10-21",
+  referenceDate: "2026-10-23",
 };
 const naturalStyle: Agent["style"] = {
   tone: "Warm, direct, and conversational. Use first names and contractions.",
@@ -24,6 +26,10 @@ const naturalStyle: Agent["style"] = {
     "I hope this finds you well; just checking in; exciting journey; excessive exclamation marks.",
   examples:
     "Hey Sarah! Great talking today. I’m checking on that photography time for Tuesday and will let you know as soon as it’s confirmed.",
+  directness: "Lead with the specific next step; ask one clear question.",
+  greeting: "Hey [first name] for established clients.",
+  signoff: "Usually omit a sign-off in a short text.",
+  preferredWords: "take a look; next step; let me know; work through",
 };
 export const sampleAgents: Agent[] = [
   {
@@ -736,3 +742,262 @@ export const sampleAppointments: Appointment[] = [
     briefing: "Discuss November relocation timing and housing preferences.",
   },
 ];
+
+// Presentation fixtures are explicit fictional CRM records, evaluated on Friday, October 23.
+sampleClients.push({
+  id: "michael",
+  agentId: "jordan",
+  name: "Michael Turner",
+  email: "michael.turner@example.com",
+  phone: "(512) 555-0108",
+  type: "Buyer",
+  notes: [
+    "Active buyer. Prefers short texts and a direct question about the homes he toured.",
+    "Toured two homes with Jordan on October 21. Jordan committed to follow up on October 22; no completed follow-up is recorded.",
+  ],
+});
+sampleConversations.push(
+  {
+    id: "conversation-michael-tour",
+    agentId: "jordan",
+    clientId: "michael",
+    propertyId: null,
+    title: "Michael’s buyer tour",
+    transcript:
+      "On Wednesday, October 21, Jordan toured two homes with Michael Turner. Michael said: “The second home’s office worked better for me, but I need to think about the commute.” Jordan said: “I’ll follow up on Thursday, October 22, to hear what you think.” No offer, decision, or additional appointment was agreed.",
+    source: "sample",
+    createdAt: "2026-10-21T20:30:00.000Z",
+  },
+  {
+    id: "conversation-sarah-commitment",
+    agentId: "jordan",
+    clientId: "sarah",
+    propertyId: "willow",
+    title: "Sarah’s photography follow-up commitment",
+    transcript:
+      "On Thursday, October 22, Sarah asked whether Tuesday afternoon photography had been confirmed. It had not. Jordan said: “I’ll check with the photographer and update you by Friday, October 23.” Cleaning remains booked for Monday, October 26. No photography time or listing launch date was confirmed.",
+    source: "sample",
+    createdAt: "2026-10-22T16:00:00.000Z",
+  },
+  {
+    id: "conversation-emily-question",
+    agentId: "marcus",
+    clientId: "emily",
+    propertyId: "cedar",
+    title: "Emily’s showing preparation question",
+    transcript:
+      "On Thursday, October 22, Emily Carter asked about preparing 321 Cedar Hollow for future showings: “Should I leave the patio furniture out for the next showing?” Marcus recorded the question but has not answered it yet. No showing date or preparation decision was confirmed.",
+    source: "sample",
+    createdAt: "2026-10-22T18:00:00.000Z",
+  },
+);
+sampleTasks.push(
+  task(
+    "task-michael-followup",
+    "jordan",
+    "michael",
+    null,
+    "Follow up with Michael after the tour",
+    "Jordan committed to ask Michael for his feedback on Thursday, October 22. The office layout and commute are his unresolved considerations. No completed follow-up is recorded.",
+    "2026-10-22",
+    "open",
+    "high",
+  ),
+);
+export const sampleCommitments: Commitment[] = [
+  {
+    id: "commitment-sarah-photography",
+    agentId: "jordan",
+    clientId: "sarah",
+    propertyId: "willow",
+    conversationId: "conversation-sarah-commitment",
+    kind: "dependency",
+    title: "Update Sarah on photography confirmation",
+    detail:
+      "Tuesday afternoon, October 27, is requested. Photographer confirmation is outstanding; Jordan committed to update Sarah on Friday, October 23.",
+    dueDate: "2026-10-23",
+    status: "open",
+    sourceQuote:
+      "I’ll check with the photographer and update you by Friday, October 23.",
+    createdAt: "2026-10-22T16:00:00.000Z",
+    resolvedAt: null,
+  },
+  {
+    id: "commitment-emily-question",
+    agentId: "marcus",
+    clientId: "emily",
+    propertyId: "cedar",
+    conversationId: "conversation-emily-question",
+    kind: "question",
+    title: "Answer Emily’s patio furniture question",
+    detail:
+      "Emily asked whether to leave the patio furniture out for the next showing. No answer, decision, or deadline has been recorded.",
+    dueDate: null,
+    status: "open",
+    sourceQuote: "Should I leave the patio furniture out for the next showing?",
+    createdAt: "2026-10-22T18:00:00.000Z",
+    resolvedAt: null,
+  },
+];
+samplePackages.find((item) => item.id === "package-sarah")!.signalIds = [
+  "commitment:commitment-sarah-photography",
+];
+samplePackages.find((item) => item.id === "package-sarah")!.recommendationId =
+  recommendationIdFor("jordan", "sarah", "willow", [
+    "commitment:commitment-sarah-photography",
+  ]);
+samplePackages.push(
+  {
+    id: "package-michael-followup",
+    conversationId: "conversation-michael-tour",
+    agentId: "jordan",
+    clientId: "michael",
+    propertyId: null,
+    title: "Pick up the conversation with Michael",
+    summary:
+      "Jordan’s promised October 22 follow-up after Michael’s buyer tour is still open. Ask for his thoughts on the office layout and commute. No buying decision has been recorded.",
+    facts: [
+      {
+        text: "Jordan committed to follow up on October 22.",
+        certainty: "confirmed",
+        sourceQuote:
+          "I’ll follow up on Thursday, October 22, to hear what you think.",
+      },
+    ],
+    clarifications: [
+      "Michael’s decision remains unknown. Approval of this draft does not complete the overdue follow-up task.",
+    ],
+    actions: [
+      action(
+        "michael-message",
+        "message",
+        "A buyer follow-up in Jordan’s voice",
+        "Hey Michael, what are your thoughts after the tour? You mentioned the office in the second home worked better for you, and you were still weighing the commute. I’d like to hear where you landed on those two things.",
+        "The second home’s office worked better for me, but I need to think about the commute.",
+      ),
+    ],
+    status: "pending",
+    origin: "sample",
+    createdAt: "2026-10-23T13:30:00.000Z",
+    recommendationId: recommendationIdFor("jordan", "michael", null),
+  },
+  {
+    id: "package-emily-question",
+    conversationId: "conversation-emily-question",
+    agentId: "marcus",
+    clientId: "emily",
+    propertyId: "cedar",
+    title: "Acknowledge Emily’s open question",
+    summary:
+      "Emily’s patio furniture question has not been resolved. Prepare an honest acknowledgment without inventing a recommendation or showing date.",
+    facts: [
+      {
+        text: "Emily asked whether the patio furniture should stay out.",
+        certainty: "confirmed",
+        sourceQuote:
+          "Should I leave the patio furniture out for the next showing?",
+      },
+    ],
+    clarifications: [
+      "Confirm the preparation advice before marking Emily’s question resolved.",
+    ],
+    actions: [
+      action(
+        "emily-question-message",
+        "message",
+        "A practical response for Emily",
+        "Hi Emily, I have your question about leaving the patio furniture out. I’m checking the preparation recommendation before giving you a definite answer.",
+        "Should I leave the patio furniture out for the next showing?",
+        "uncertain",
+      ),
+    ],
+    status: "pending",
+    origin: "sample",
+    createdAt: "2026-10-23T13:35:00.000Z",
+    recommendationId: recommendationIdFor("marcus", "emily", "cedar"),
+  },
+);
+for (const [id, signalIds] of [
+  ["package-michael-followup", ["task:task-michael-followup"]],
+  ["package-emily-question", ["commitment:commitment-emily-question"]],
+] as const) {
+  const pkg = samplePackages.find((item) => item.id === id)!;
+  pkg.signalIds = [...signalIds];
+  pkg.recommendationId = recommendationIdFor(
+    pkg.agentId,
+    pkg.clientId,
+    pkg.propertyId,
+    [...signalIds],
+  );
+}
+for (const appointment of sampleAppointments) {
+  if (appointment.startsAt.startsWith("2026-10-21")) {
+    appointment.startsAt = appointment.startsAt
+      .replace("2026-10-21", "2026-10-23")
+      .replace("-05:00", "-04:00");
+    appointment.endsAt = appointment.endsAt
+      .replace("2026-10-21", "2026-10-23")
+      .replace("-05:00", "-04:00");
+  }
+}
+const morningHuddle = sampleAppointments.find(
+  (item) => item.id === "appointment-jordan-team",
+)!;
+morningHuddle.startsAt = "2026-10-23T10:30:00-04:00";
+morningHuddle.endsAt = "2026-10-23T11:00:00-04:00";
+sampleAppointments.push({
+  id: "appointment-michael-tour",
+  agentId: "jordan",
+  clientId: "michael",
+  propertyId: null,
+  title: "Buyer tour · Michael Turner",
+  startsAt: "2026-10-21T14:00:00-04:00",
+  endsAt: "2026-10-21T15:30:00-04:00",
+  location: "Two fictional Austin homes",
+  status: "confirmed",
+  briefing:
+    "Tour completed October 21. Michael preferred the second home’s office and needed to consider the commute. Follow-up committed for October 22.",
+});
+sampleClients.find((item) => item.id === "parkers")!.notes = [
+  "Looking for a bright home with a dedicated office. Friday, October 23, consultation confirmed.",
+];
+Object.assign(sampleAgents.find((item) => item.id === "olivia")!.style, {
+  directness: "State the recommendation, then briefly explain why.",
+  greeting: "Hi [first name],",
+  signoff: "Warmly, Olivia",
+  preferredWords: "clear plan; next step; comfortable",
+  examples:
+    "Hi Robert, the photos are ready. Please take a look at the brochure and tell me if there’s anything you’d like to adjust before we move ahead. Warmly, Olivia",
+});
+Object.assign(sampleAgents.find((item) => item.id === "marcus")!.style, {
+  directness: "Very direct; one practical point at a time.",
+  greeting: "Hi [first name]",
+  signoff: "No sign-off in texts.",
+  preferredWords: "quick update; check; confirm",
+  examples:
+    "Hi Emily, I have your question about the patio furniture. I’m checking the preparation recommendation before giving you a definite answer.",
+});
+Object.assign(sampleAgents.find((item) => item.id === "sophie")!.style, {
+  directness: "Explain options gently and ask a clear question.",
+  greeting: "Hi [first name],",
+  signoff: "Happy to talk it through, Sophie",
+  preferredWords: "options; comfortable; talk it through",
+  examples:
+    "Hi Noah, I’ve narrowed down the neighborhood options we discussed. Which commute would feel more manageable for you? Happy to talk it through, Sophie",
+});
+Object.assign(sampleAgents.find((item) => item.id === "maya")!.style, {
+  directness: "Understated; no pressure or sales language.",
+  greeting: "Hello [first name],",
+  signoff: "Maya",
+  preferredWords: "consider; when you are ready; considered",
+  examples:
+    "Hello Grace, let me know if you would like to discuss any part of the staging proposal. Once you’re comfortable with the plan, we can consider photography dates. Maya",
+});
+Object.assign(sampleAgents.find((item) => item.id === "daniel")!.style, {
+  directness: "Brief and clear; one question at a time.",
+  greeting: "Hi [first name]",
+  signoff: "Use Daniel in email; omit a sign-off in texts.",
+  preferredWords: "priorities; next step; keep it simple",
+  examples:
+    "Hi Ava, what’s the one thing you’d like us to focus on during our relocation call? I’ll keep the next steps simple.",
+});

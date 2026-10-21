@@ -4,7 +4,7 @@
 
 AgentDesk turns a client conversation into coordinated work for an agent to review: a factual summary, an internal CRM note, a personal follow-up draft, listing tasks, and proposed property notes. The Today, Review, Listings, and Team views share one relational data layer. Approvals and task completion persist across refreshes.
 
-The initial product runs one protected, fictional **Sample Workspace**, The Willow Collective, with six agents. It is a working foundation for a paid pilot, with a deliberately limited access model. Names, addresses, prices, schedules, and conversations are sample data. Its demonstration timeline is anchored to October 21, 2026, so the schedule stays coherent between presentations. Photography illustrates the fictional properties; see [ATTRIBUTIONS.md](ATTRIBUTIONS.md).
+The initial product runs one protected, fictional **Sample Workspace**, The Willow Collective, with six agents. It is a working foundation for a paid pilot, with a deliberately limited access model. Names, addresses, prices, schedules, and conversations are sample data. Its demonstration timeline is anchored to Friday, October 23, 2026, with appointment times displayed in Eastern time. Recommendations use that explicit sample date. Photography illustrates the fictional properties; see [ATTRIBUTIONS.md](ATTRIBUTIONS.md).
 
 ## Run locally
 
@@ -32,12 +32,14 @@ The CLI reads `.env`. If you choose `.env.local` instead, Next.js reads it but t
 
 ## Demonstrate the central workflow
 
+Start with the [Friday presentation guide](docs/DEMO_GUIDE.md). It covers proactive follow-ups, microphone capture, explicit approvals, connected records, and the saved-output fallback. [AI evaluation](docs/AI_EVALUATION.md) explains how to verify actual provider access and quality.
+
 1. Start on **Today**. The briefing, priorities, appointments, and listing activity all use the sample workspace's records.
 2. Open **Review** and select Sarah Mitchell's seller conversation for **1420 Willow Lane**. Read the original source and the distinction between confirmed cleaning and requested photography.
-3. Inspect the proposed summary, internal CRM note, follow-up draft, tasks, and property update. Edit the text and accept or reject individual items.
+3. Inspect the proposed summary, internal CRM note, follow-up draft, tasks, and property update. Edit the text and explicitly approve or reject individual items. Undecided actions remain pending; the effects summary lists only the changes being confirmed.
 4. Apply the review. Approved internal notes and tasks are persisted together; rejected items do not create changes. A message becomes an **approved draft**, ready for a human to use. It is never sent by AgentDesk.
 5. Open the property in **Listings**, revisit **Today**, and inspect activity/client context to see the same updates. Refresh to verify persistence.
-6. With a server-side OpenAI key configured, add a new written conversation or upload authorized audio and prepare a new package. Without a key, use the clearly labeled saved sample package; AgentDesk does not manufacture a fresh AI response.
+6. With a server-side OpenAI key configured, add a new written conversation, record a voice note, or upload authorized audio and prepare a new package. Without a key, use the clearly labeled saved sample package; AgentDesk does not manufacture a fresh AI response.
 
 Sample note for a live run:
 
@@ -53,12 +55,14 @@ Relative weekday dates stay in the proposal text. New AI-generated tasks receive
 | Saved sample review packages                                                 | Editable and approvable without an AI key; explicitly labeled as saved sample work        |
 | New conversation processing                                                  | Live OpenAI Responses API with structured output, when configured                         |
 | Shorter / More natural / More professional                                   | Live OpenAI rewrite of the current message draft, when configured                         |
-| Authorized audio upload                                                      | Live transcription feeds conversation processing; the transcript is available in Review. Requires an AI key and consent. |
-| Communication profiles                                                       | Saved tone, length, wording preferences, and approved examples used in generation context |
+| Authorized audio capture/upload                                                      | Browser recording with playback and upload alternatives; live transcription feeds processing. Requires an AI key and consent. |
+| Communication profiles                                                       | Saved tone, length, directness, greeting, sign-off, preferred/avoided wording, and approved examples inform new drafts and rewriting |
 | Daily and team summaries                                                     | Derived from current application records; no claim of continuous background AI monitoring |
 | Client messages                                                              | Prepared or approved drafts only; never externally sent                                   |
 | Lofty, Google, Microsoft, email, SMS, calendars                              | Unconnected; explicit integration capability boundaries are in `src/lib/integrations.ts`  |
-| Team leader presentation toggle                                              | Changes the profile's presentation label in the shared sample workspace; does not switch agents or grant permissions. |
+| Team leader presentation toggle                                              | Agent preview switches the selected human agent’s work and style; the leader toggle changes its display label. Neither grants permissions. |
+
+Record-based follow-up recommendations use open commitments, unresolved questions, and relevant tasks, with appointments and listing context as supporting evidence. Refresh & prepare generates missing proposals when live AI is configured. Existing proposals are reused, and a saved/approved message does not complete the underlying follow-up. Sarah, Michael, and Emily have linked fictional source records and saved example packages.
 
 ## Configuration
 
@@ -71,6 +75,7 @@ Copy [`.env.example`](.env.example) to `.env`. Never commit credentials or expos
 | `OPENAI_API_KEY`           | Optional. Enables new generation, rewriting, and transcription. Missing keys produce a clear unavailable state while saved sample work remains usable. |
 | `OPENAI_MODEL`             | Text/structured output model; default `gpt-6-astra`. Use a compatible model available to your OpenAI project.                                          |
 | `OPENAI_TRANSCRIBE_MODEL`  | Audio transcription model; default `gpt-transcribe`.                                                                                                   |
+| `OPENAI_REWRITE_MODEL`     | Optional rewrite-specific model. If blank, uses `OPENAI_MODEL`. Verify access and factual quality with the live evaluation.                            |
 | `DEMO_PASSWORD`            | Required in production, at least 12 characters. Shared password for the pilot workspace.                                                               |
 | `SESSION_SECRET`           | Required in production, at least 32 characters. Use a cryptographically random value.                                                                  |
 | `APP_URL`                  | Optional canonical origin for mutation Origin checks, such as `https://agentdesk.example.com`. If set, access the app using that exact origin.         |
@@ -104,9 +109,9 @@ The app uses Next.js App Router, React, TypeScript, Tailwind CSS, locally served
 | `src/lib/integrations.ts`            | Honest capability contracts for future external providers                                                                              |
 | `migrations` and `scripts`           | Versioned schema changes and migration/seed CLI                                                                                        |
 
-The five assistant identities are coordinated responsibilities in one contextual generation request. They do not run as five independent agents. For generation, the server sends the selected agent's name and communication preferences, the client's name/relationship, selected property address, a small set of approved writing examples, and the submitted conversation. Rewriting also includes the current message draft and extracted facts. Generated facts and actions carry source quotations and certainty. Structural and evidence checks reject unsupported output before persistence, but the agent must still review meaning and factual accuracy.
+The five assistant identities are coordinated responsibilities in one contextual generation request. They do not run as five independent agents. For generation, the server sends the selected agent's name and communication preferences, the client's name/relationship, selected property address, a small set of approved writing examples, scoped notes/tasks/appointments/history, and the submitted conversation or follow-up evidence snapshot. Structured contact email/phone fields are omitted. Rewriting also includes the current message draft and extracted facts. Generated facts and actions carry source quotations and certainty. Structural and evidence checks reject unsupported output before persistence, but the agent must still review meaning and factual accuracy.
 
-Generation and transcription run as bounded request/response operations with a timeout and no automatic provider retry. There is no durable background queue in this pilot. Add a job table/worker with idempotent completion before introducing long recordings, automatic ingestion, or scheduled work. Approved internal work uses transactional database updates and retains the original conversation for review.
+Generation and transcription run as bounded request/response operations with a timeout and no automatic provider retry. There is no durable background queue in this pilot. Add a job table/worker with idempotent completion before introducing long recordings, automatic ingestion, or scheduled work. Approved internal work uses transactional database updates and retains the original conversation, original proposal, final edits, and decision audit. Repeated request IDs and source-aware recommendation keys prevent duplicate persisted work. Legacy decisions made before audit history existed are identified honestly; their lost originals are not reconstructed.
 
 ## Database operations
 
@@ -115,7 +120,9 @@ npm run db:migrate
 npm run db:seed
 ```
 
-Migrations are applied in filename order and recorded with checksums. Applied migration files must not be edited; add the next numbered migration. PostgreSQL migration execution uses an advisory lock. Production migrations run explicitly through `npm run db:migrate`, before the service starts; HTTP requests never run production migrations. Local development still migrates automatically. The seed is repeatable: if the sample workspace already exists, its saved edits are preserved. Running it again does not reset a demo.
+Migrations are applied in filename order and recorded with checksums. Applied migration files must not be edited; add the next numbered migration. PostgreSQL migration execution uses an advisory lock. Production migrations run explicitly through `npm run db:migrate`, before the service starts; HTTP requests never run production migrations. Local development still migrates automatically. The seed is versioned and repeatable: sample upgrades add required fictional records and align the presentation calendar while preserving saved review decisions, task state, and edited notes. Running it again does not reset a demo.
+
+Settings provides an explicit **Restore fictional workspace** action guarded by the exact phrase `RESTORE FICTIONAL WORKSPACE`. It deletes added records only inside the designated sample workspace and reseeds it transactionally; non-sample workspaces are refused. This shared demo must not hold real customer data.
 
 To begin a fresh local demonstration without deleting prior work, stop the server, set `PGLITE_DATA_DIR=.agentdesk/fresh-demo` in `.env`, and restart. Use a unique directory for each isolated demo. For hosted PostgreSQL, use a separate database for a clean environment. Back up persistent data before schema or environment changes.
 
@@ -140,7 +147,7 @@ Configuration errors now stop deployment immediately with a message naming the s
 
 Sessions are HMAC signed, expire after 12 hours, and use HttpOnly, SameSite=Strict cookies (Secure in production). Mutating routes validate the request Origin. Inputs are validated and bounded, database operations use the ORM's parameterized queries, and logs avoid transcripts, client details, audio bytes, credentials, and provider response bodies.
 
-The note entry form accepts up to 24,000 characters; the server permits transcripts up to 40,000 characters. Audio uploads accept MP3, MP4, MPEG, MPGA, M4A, WAV, or WebM, up to 20 MB. Explicit authorization is required before processing a note or recording with OpenAI. Audio exists only in request memory and is discarded after transcription; a transcript becomes part of the selected conversation when the subsequent work package is saved. Text generation uses `store: false`; provider retention and processing are still governed by the configured OpenAI project's policies. This app does not claim to provide provider-side zero retention.
+The note entry form accepts up to 24,000 characters; the server permits transcripts up to 40,000 characters. Audio uploads accept MP3, MP4, MPEG, MPGA, M4A, WAV, WebM, Ogg, or FLAC, up to 20 MB. Explicit authorization is required before processing a note or recording with OpenAI. Audio exists only in request memory and is discarded after transcription; a transcript becomes part of the selected conversation when the subsequent work package is saved. Text generation uses `store: false`; provider retention and processing are still governed by the configured OpenAI project's policies. This app does not claim to provide provider-side zero retention.
 
 The access model is a **single shared workspace password**, not per-user identity or production RBAC. Workspace identifiers and tested database ownership checks provide a foundation for future tenancy. Before onboarding real independent teams, implement individual authentication, server-enforced roles and memberships, broader tenancy isolation tests, consent/retention/deletion policy, and audited integration credentials. No billing, subscriptions, inbound webhooks, outbound communications, or CRM synchronization are enabled.
 

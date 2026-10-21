@@ -7,7 +7,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { Agent, Fact } from "../types";
+import type { Agent, Fact, ReviewAudit } from "../types";
 
 const id = () => text("id").primaryKey();
 const workspaceId = () => text("workspace_id").notNull();
@@ -21,6 +21,8 @@ export const workspaces = pgTable("workspaces", {
   name: text("name").notNull(),
   sample: boolean("sample").notNull().default(false),
   referenceDate: text("reference_date").notNull(),
+  sampleVersion: integer("sample_version").notNull().default(1),
+  revision: integer("revision").notNull().default(0),
 });
 export const agents = pgTable("agents", {
   id: id(),
@@ -67,7 +69,9 @@ export const conversations = pgTable("conversations", {
   propertyId: text("property_id"),
   title: text("title").notNull(),
   transcript: text("transcript").notNull(),
-  source: text("source").$type<"note" | "audio" | "sample">().notNull(),
+  source: text("source")
+    .$type<"note" | "audio" | "sample" | "followup">()
+    .notNull(),
   createdAt: createdAt(),
 });
 export const workPackages = pgTable("work_packages", {
@@ -87,6 +91,12 @@ export const workPackages = pgTable("work_packages", {
     .default("pending"),
   origin: text("origin").$type<"sample" | "openai">().notNull(),
   createdAt: createdAt(),
+  requestId: text("request_id"),
+  recommendationId: text("recommendation_id"),
+  signalIds: jsonb("recommendation_signal_ids")
+    .$type<string[]>()
+    .notNull()
+    .default([]),
 });
 export const proposedActions = pgTable("proposed_actions", {
   id: id(),
@@ -108,6 +118,8 @@ export const proposedActions = pgTable("proposed_actions", {
     .$type<"confirmed" | "requested" | "uncertain">()
     .notNull(),
   reviewedAt: timestamp("reviewed_at", { withTimezone: true, mode: "string" }),
+  original: jsonb("original").$type<ReviewAudit["original"]>().notNull(),
+  originalAvailable: boolean("original_available").notNull().default(true),
 });
 export const tasks = pgTable(
   "tasks",
@@ -169,4 +181,38 @@ export const approvedMessages = pgTable("approved_messages", {
   body: text("body").notNull(),
   status: text("status").$type<"approved">().notNull().default("approved"),
   createdAt: createdAt(),
+});
+export const commitments = pgTable("commitments", {
+  id: id(),
+  workspaceId: workspaceId(),
+  agentId: text("agent_id").notNull(),
+  clientId: text("client_id").notNull(),
+  propertyId: text("property_id"),
+  conversationId: text("conversation_id"),
+  kind: text("kind").$type<"follow_up" | "question" | "dependency">().notNull(),
+  title: text("title").notNull(),
+  detail: text("detail").notNull(),
+  dueDate: text("due_date"),
+  status: text("status").$type<"open" | "resolved">().notNull().default("open"),
+  sourceQuote: text("source_quote").notNull(),
+  createdAt: createdAt(),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true, mode: "string" }),
+});
+export const reviewAudits = pgTable("review_audits", {
+  id: id(),
+  workspaceId: workspaceId(),
+  packageId: text("package_id").notNull(),
+  actionId: text("action_id").notNull().unique(),
+  agentId: text("agent_id").notNull(),
+  clientId: text("client_id").notNull(),
+  propertyId: text("property_id"),
+  decision: text("decision").$type<"approved" | "rejected">().notNull(),
+  original: jsonb("original").$type<ReviewAudit["original"]>().notNull(),
+  edited: jsonb("edited").$type<ReviewAudit["edited"]>().notNull(),
+  reviewedAt: timestamp("reviewed_at", {
+    withTimezone: true,
+    mode: "string",
+  }).notNull(),
+  actor: text("actor").notNull(),
+  originalAvailable: boolean("original_available").notNull().default(true),
 });

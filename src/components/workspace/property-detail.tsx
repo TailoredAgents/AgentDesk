@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowUpRight, ChevronRight, Check } from "lucide-react";
-import type { WorkspaceData, Property, Task } from "@/lib/types";
+import type { WorkspaceData, Property, Task, Commitment } from "@/lib/types";
 import {
   AssistantIcon,
   Avatar,
@@ -12,6 +12,8 @@ import {
   shortDate,
 } from "../ui";
 import { Progress, TaskRow } from "./shared";
+import { CommitmentList } from "./commitments";
+import { listingMilestones, orderedTasks } from "@/lib/workspace-insights";
 
 export function PropertyDetail({
   property: p,
@@ -20,6 +22,7 @@ export function PropertyDetail({
   onTask,
   onReview,
   onClient,
+  onCommitment,
 }: {
   property: Property;
   data: WorkspaceData;
@@ -27,9 +30,16 @@ export function PropertyDetail({
   onTask: (t: Task) => void;
   onReview: (id: string) => void;
   onClient: (id: string) => void;
+  onCommitment: (item: Commitment) => void;
 }) {
   if (!p) return null;
-  const tasks = data.tasks.filter((t) => t.propertyId === p.id);
+  const tasks = orderedTasks(
+    data.tasks.filter((t) => t.propertyId === p.id),
+    data.workspace.referenceDate,
+  );
+  const commitments = data.commitments.filter(
+    (item) => item.propertyId === p.id,
+  );
   const client = data.clients.find((c) => c.id === p.clientId)!;
   const agent = data.agents.find((a) => a.id === p.agentId)!;
   const packages = data.packages.filter((x) => x.propertyId === p.id);
@@ -65,62 +75,25 @@ export function PropertyDetail({
           </button>
         </div>
         <div className="milestone-track">
-          {["Preparation", "Photography", "Ready to list", "On market"].map(
-            (stage, i) => (
-              <div
-                key={stage}
-                className={
-                  i ===
-                  (p.stage === "Active listing"
-                    ? 3
-                    : p.stage === "Ready to launch"
-                      ? 2
-                      : 0)
-                    ? "current"
-                    : i <
-                        (p.stage === "Active listing"
-                          ? 3
-                          : p.stage === "Ready to launch"
-                            ? 2
-                            : 0)
-                      ? "complete"
-                      : ""
-                }
-              >
-                <span>
-                  {i <
-                  (p.stage === "Active listing"
-                    ? 3
-                    : p.stage === "Ready to launch"
-                      ? 2
-                      : 0) ? (
-                    <Check size={12} />
-                  ) : (
-                    i + 1
-                  )}
-                </span>
-                <strong>{stage}</strong>
-                <small>
-                  {i ===
-                  (p.stage === "Active listing"
-                    ? 3
-                    : p.stage === "Ready to launch"
-                      ? 2
-                      : 0)
-                    ? p.stage
-                    : i <
-                        (p.stage === "Active listing"
-                          ? 3
-                          : p.stage === "Ready to launch"
-                            ? 2
-                            : 0)
-                      ? "Complete"
-                      : "Next milestone"}
-                </small>
-              </div>
-            ),
-          )}
+          {listingMilestones(p, tasks).map((milestone, index) => (
+            <div
+              key={milestone.title}
+              className={milestone.complete ? "complete" : "current"}
+            >
+              <span>
+                {milestone.complete ? <Check size={12} /> : index + 1}
+              </span>
+              <strong>{milestone.title}</strong>
+              <small>{milestone.detail}</small>
+            </div>
+          ))}
         </div>
+        {commitments.length > 0 && (
+          <>
+            <SectionTitle title="Dependencies & commitments" />
+            <CommitmentList items={commitments} onChange={onCommitment} />
+          </>
+        )}
         <SectionTitle
           title="Every detail, accounted for"
           aside={

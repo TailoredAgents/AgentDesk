@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
@@ -8,6 +9,7 @@ import { eq, sql } from "drizzle-orm";
 import { Client } from "pg";
 import { closeDatabase, getDatabase, probeReadiness } from "../src/lib/db";
 import { seedDatabase } from "../src/lib/db/seed";
+import { sampleAgents } from "../src/lib/db/seed-data";
 import * as tables from "../src/lib/db/schema";
 import {
   createConversationPackage,
@@ -16,8 +18,13 @@ import {
   reviewPackage,
   updateAgentStyle,
   updateTask,
+  updateCommitment,
+  resetSampleWorkspace,
+  SAMPLE_RESET_CONFIRMATION,
+  findConversationPackageByRequestId,
   type GeneratedPackage,
 } from "../src/lib/repository";
+import { deriveFollowUps } from "../src/lib/follow-ups";
 
 let temporaryDirectory: string;
 before(async () => {
@@ -100,13 +107,30 @@ const domainError = (code: string) => (error: unknown) =>
 test("sample workspace is coherent and seed preserves saved records", async () => {
   const workspace = await getWorkspace();
   assert.equal(workspace.agents.length, 6);
-  assert.equal(workspace.workspace.referenceDate, "2026-10-21");
-  assert.equal(workspace.packages.length, 3);
+  assert.equal(
+    new Set(workspace.agents.map((agent) => agent.style.examples)).size,
+    6,
+  );
+  for (const [agentId, name] of Object.entries({
+    jordan: "Sarah",
+    olivia: "Robert",
+    marcus: "Emily",
+    sophie: "Noah",
+    daniel: "Ava",
+    maya: "Grace",
+  }))
+    assert.ok(
+      workspace.agents
+        .find((agent) => agent.id === agentId)!
+        .style.examples.includes(name),
+    );
+  assert.equal(workspace.workspace.referenceDate, "2026-10-23");
+  assert.equal(workspace.packages.length, 5);
   assert.equal(
     workspace.appointments.filter(
       (appointment) =>
         appointment.agentId === "jordan" &&
-        appointment.startsAt.startsWith("2026-10-21"),
+        appointment.startsAt.startsWith("2026-10-23"),
     ).length,
     3,
   );
@@ -126,6 +150,29 @@ test("sample workspace is coherent and seed preserves saved records", async () =
         ?.agentId,
       property.agentId,
     );
+  for (const clientId of ["sarah", "michael", "emily"]) {
+    const recommendation = workspace.recommendations.find(
+      (item) => item.clientId === clientId,
+    )!;
+    assert.equal(recommendation.status, "ready_for_review");
+    assert.ok(recommendation.evidence.length > 0);
+    assert.ok(recommendation.packageId);
+  }
+  assert.equal(
+    workspace.recommendations.find((item) => item.clientId === "michael")!
+      .urgency,
+    "overdue",
+  );
+  assert.equal(
+    workspace.recommendations.find((item) => item.clientId === "sarah")!
+      .dueDate,
+    "2026-10-23",
+  );
+  assert.equal(
+    workspace.recommendations.find((item) => item.clientId === "emily")!
+      .urgency,
+    "unresolved",
+  );
   const { db } = await getDatabase();
   assert.equal(await seedDatabase(db), false);
   assert.equal((await getWorkspace()).tasks.length, workspace.tasks.length);
@@ -195,6 +242,26 @@ test("review applies edited content atomically with correct client/property link
       .detail,
     /Not sent/,
   );
+  const audit = result.reviewHistory.find(
+    (item) => item.actionId === "sarah-message",
+  )!;
+  assert.equal(
+    audit.original.body,
+    pkg.actions.find((action) => action.id === "sarah-message")!.body,
+  );
+  assert.equal(audit.edited.body, messages[0].body);
+  assert.equal(audit.originalAvailable, true);
+  assert.equal(
+    result.commitments.find(
+      (item) => item.id === "commitment-sarah-photography",
+    )!.status,
+    "open",
+  );
+  assert.equal(
+    result.recommendations.find((item) => item.clientId === "sarah")!.packageId,
+    "package-sarah",
+    "Approved linked tasks must not create duplicate proactive packages.",
+  );
 });
 
 test("concurrent duplicate approval creates exactly one task and one audit event", async () => {
@@ -213,11 +280,13 @@ test("concurrent duplicate approval creates exactly one task and one audit event
       },
     ],
   };
+  const revision = (await getWorkspace()).workspace.revision!;
   await Promise.all([
     reviewPackage(pkg.id, input),
     reviewPackage(pkg.id, input),
     reviewPackage(pkg.id, input),
   ]);
+  assert.equal((await getWorkspace()).workspace.revision, revision + 1);
   const { db } = await getDatabase();
   assert.equal(
     (
@@ -244,6 +313,15 @@ test("concurrent duplicate approval creates exactly one task and one audit event
       ],
     }),
     domainError("ALREADY_REVIEWED"),
+  );
+  assert.equal(
+    (
+      await db
+        .select()
+        .from(tables.reviewAudits)
+        .where(eq(tables.reviewAudits.actionId, pkg.actions[0].id))
+    ).length,
+    1,
   );
 });
 
@@ -336,6 +414,7 @@ test("invalid action prevents every write in a mixed review", async () => {
   );
   const after = await getWorkspace();
   assert.deepEqual(after.clients, before.clients);
+  assert.equal(after.workspace.revision, before.workspace.revision);
   assert.deepEqual(after.tasks, before.tasks);
   assert.deepEqual(after.activities, before.activities);
   assert.equal(
@@ -524,6 +603,8 @@ test("task completion is idempotent and style and task changes survive reopening
   const first = await updateTask("task-willow-disclosure", "done");
   const second = await updateTask("task-willow-disclosure", "done");
   assert.equal(second.activities.length, first.activities.length);
+  assert.equal(first.workspace.revision, before.workspace.revision! + 1);
+  assert.equal(second.workspace.revision, first.workspace.revision);
   await updateAgentStyle("jordan", {
     ...before.agents.find((agent) => agent.id === "jordan")!.style,
     tone: "Warm and brief; saved persistence test.",
@@ -542,6 +623,422 @@ test("task completion is idempotent and style and task changes survive reopening
     reopened.packages.find((pkg) => pkg.id === "package-sarah")!.status,
     "reviewed",
   );
+});
+
+test("proactive signals are record-based, bounded, and never inferred from silence alone", async () => {
+  const state = await getWorkspace();
+  const quiet = {
+    ...state,
+    tasks: state.tasks.map((task) => ({ ...task, status: "done" as const })),
+    commitments: state.commitments.map((item) => ({
+      ...item,
+      status: "resolved" as const,
+    })),
+  };
+  assert.deepEqual(deriveFollowUps(quiet), []);
+  const populated = {
+    ...state,
+    clients: state.clients.map((client) => ({
+      ...client,
+      notes: ["Context ".repeat(10_000)],
+    })),
+  };
+  assert.ok(
+    deriveFollowUps(populated).every(
+      (item) => item.sourceSnapshot.length <= 39_000,
+    ),
+  );
+  assert.deepEqual(
+    deriveFollowUps(state).map((item) => item.id),
+    deriveFollowUps(state).map((item) => item.id),
+  );
+});
+
+test("conversation request IDs prevent concurrent duplicate packages and reject changed-payload reuse", async () => {
+  const before = await getWorkspace();
+  const input = { ...conversationInput, requestId: randomUUID() };
+  const results = await Promise.all([
+    createConversationPackage(input, generated(["message"])),
+    createConversationPackage(input, generated(["message"])),
+    createConversationPackage(input, generated(["message"])),
+  ]);
+  assert.equal(new Set(results.map((result) => result.package.id)).size, 1);
+  assert.equal(
+    (await getWorkspace()).workspace.revision,
+    before.workspace.revision! + 1,
+  );
+  assert.equal(
+    (await getWorkspace()).conversations.length,
+    before.conversations.length + 1,
+  );
+  assert.equal(
+    (await findConversationPackageByRequestId(input.requestId))!.package.id,
+    results[0].package.id,
+  );
+  assert.equal(
+    await findConversationPackageByRequestId(input.requestId, {
+      workspaceId: "second-tenant",
+    }),
+    null,
+  );
+  await assert.rejects(
+    createConversationPackage(
+      {
+        ...input,
+        transcript:
+          "Changed content must not reuse a prior submission identifier.",
+      },
+      generated(["message"]),
+    ),
+    domainError("REQUEST_CONFLICT"),
+  );
+});
+
+test("proactive preparation deduplicates by signal and rejects a source completed during generation", async () => {
+  const state = await getWorkspace();
+  const recommendation = state.recommendations.find(
+    (item) => item.clientId === "noah",
+  )!;
+  assert.equal(recommendation.status, "needs_draft");
+  const input = {
+    agentId: recommendation.agentId,
+    clientId: recommendation.clientId,
+    propertyId: recommendation.propertyId,
+    title: "Noah follow-up",
+    transcript: recommendation.sourceSnapshot,
+    source: "followup" as const,
+    recommendationId: recommendation.id,
+  };
+  const results = await Promise.all([
+    createConversationPackage(
+      { ...input, requestId: randomUUID() },
+      generated(["message"]),
+    ),
+    createConversationPackage(
+      { ...input, requestId: randomUUID() },
+      generated(["message"]),
+    ),
+  ]);
+  assert.equal(results[0].package.id, results[1].package.id);
+  const stale = (await getWorkspace()).recommendations.find(
+    (item) => item.clientId === "ava",
+  )!;
+  await updateTask("task-ava-relocation", "done");
+  await assert.rejects(
+    createConversationPackage(
+      {
+        agentId: stale.agentId,
+        clientId: stale.clientId,
+        propertyId: stale.propertyId,
+        title: "Stale follow-up",
+        transcript: stale.sourceSnapshot,
+        source: "followup",
+        recommendationId: stale.id,
+      },
+      generated(["message"]),
+    ),
+    domainError("STALE_RECOMMENDATION"),
+  );
+});
+
+test("approved drafts do not complete work; new signals after completion receive a fresh recommendation", async () => {
+  const initial = await getWorkspace();
+  const recommendation = initial.recommendations.find(
+    (item) => item.clientId === "michael",
+  )!;
+  const pkg = initial.packages.find(
+    (item) => item.id === recommendation.packageId,
+  )!;
+  await reviewPackage(pkg.id, {
+    decisions: [
+      { id: pkg.actions[0].id, status: "approved", body: pkg.actions[0].body },
+    ],
+  });
+  const approved = await getWorkspace();
+  assert.equal(
+    approved.tasks.find((item) => item.id === "task-michael-followup")!.status,
+    "open",
+  );
+  assert.equal(
+    approved.recommendations.find((item) => item.clientId === "michael")!
+      .status,
+    "approved_draft",
+  );
+  await updateTask("task-michael-followup", "done");
+  assert.equal(
+    (await getWorkspace()).recommendations.some(
+      (item) => item.clientId === "michael",
+    ),
+    false,
+  );
+  const newWork = await createConversationPackage(
+    {
+      ...conversationInput,
+      clientId: "michael",
+      propertyId: null,
+      title: "Michael’s new question",
+    },
+    {
+      ...generated(["task"]),
+      actions: [
+        {
+          ...generated(["task"]).actions[0],
+          title: "Follow up on Michael’s new commute question",
+          body: "Michael asked a new question about the commute. Follow up with him.",
+          dueDate: "2026-10-26",
+        },
+      ],
+    },
+  );
+  await reviewPackage(newWork.package.id, {
+    decisions: [
+      {
+        id: newWork.package.actions[0].id,
+        status: "approved",
+        body: newWork.package.actions[0].body,
+      },
+    ],
+  });
+  const next = (await getWorkspace()).recommendations.find(
+    (item) => item.clientId === "michael",
+  )!;
+  assert.notEqual(next.id, recommendation.id);
+  assert.equal(next.status, "needs_draft");
+  assert.equal(next.packageId, null);
+});
+
+test("explicit commitment resolution and reopening update recommendations without changing drafts", async () => {
+  const before = await getWorkspace();
+  assert.ok(before.recommendations.find((item) => item.clientId === "emily"));
+  const resolved = await updateCommitment(
+    "commitment-emily-question",
+    "resolved",
+  );
+  assert.equal(
+    resolved.recommendations.some((item) => item.clientId === "emily"),
+    false,
+  );
+  assert.deepEqual(resolved.packages, before.packages);
+  const reopened = await updateCommitment("commitment-emily-question", "open");
+  assert.equal(
+    reopened.recommendations.find((item) => item.clientId === "emily")!
+      .packageId,
+    "package-emily-question",
+  );
+  await assert.rejects(
+    updateCommitment("commitment-emily-question", "resolved", {
+      workspaceId: "second-tenant",
+    }),
+    domainError("NOT_FOUND"),
+  );
+});
+
+test("sample restore is explicit, sample-only, atomic and leaves another tenant intact", async () => {
+  const beforeRestore = await getWorkspace();
+  const pendingRecommendation = beforeRestore.recommendations.find(
+    (item) => item.clientId === "michael",
+  )!;
+  const other = await getWorkspace({ workspaceId: "second-tenant" });
+  await assert.rejects(
+    resetSampleWorkspace("yes"),
+    domainError("CONFIRMATION_REQUIRED"),
+  );
+  await assert.rejects(
+    resetSampleWorkspace(SAMPLE_RESET_CONFIRMATION, {
+      workspaceId: "second-tenant",
+    }),
+    domainError("SAMPLE_ONLY"),
+  );
+  const { db } = await getDatabase();
+  await db
+    .update(tables.workspaces)
+    .set({ sample: false })
+    .where(eq(tables.workspaces.id, "willow-collective"));
+  await assert.rejects(
+    resetSampleWorkspace(SAMPLE_RESET_CONFIRMATION),
+    domainError("SAMPLE_ONLY"),
+  );
+  await db
+    .update(tables.workspaces)
+    .set({ sample: true })
+    .where(eq(tables.workspaces.id, "willow-collective"));
+  const restored = await resetSampleWorkspace(SAMPLE_RESET_CONFIRMATION);
+  assert.equal(restored.packages.length, 5);
+  assert.equal(
+    restored.packages.every(
+      (item) => item.status === "pending" && item.origin === "sample",
+    ),
+    true,
+  );
+  assert.equal(restored.reviewHistory.length, 0);
+  assert.equal(
+    restored.tasks.find((item) => item.id === "task-michael-followup")!.status,
+    "open",
+  );
+  assert.deepEqual(await getWorkspace({ workspaceId: "second-tenant" }), other);
+  assert.equal(
+    restored.activities.filter((item) => item.kind === "sample_reset").length,
+    1,
+  );
+  assert.equal(
+    restored.workspace.revision,
+    (beforeRestore.workspace.revision ?? 0) + 1,
+  );
+  await assert.rejects(
+    createConversationPackage(
+      {
+        ...conversationInput,
+        expectedWorkspaceRevision: beforeRestore.workspace.revision ?? 0,
+      },
+      generated(["message"]),
+    ),
+    domainError("WORKSPACE_CHANGED"),
+  );
+  await assert.rejects(
+    createConversationPackage(
+      {
+        agentId: pendingRecommendation.agentId,
+        clientId: pendingRecommendation.clientId,
+        propertyId: pendingRecommendation.propertyId,
+        title: "Follow-up prepared before reset",
+        source: "followup",
+        recommendationId: pendingRecommendation.id,
+        transcript: pendingRecommendation.sourceSnapshot,
+      },
+      generated(["message"]),
+    ),
+    domainError("STALE_RECOMMENDATION"),
+  );
+});
+
+test("versioned sample additions preserve existing edits, decisions and audit history", async () => {
+  const state = await getWorkspace();
+  const pkg = state.packages.find(
+    (item) => item.id === "package-michael-followup",
+  )!;
+  await reviewPackage(pkg.id, {
+    decisions: [
+      {
+        id: pkg.actions[0].id,
+        status: "approved",
+        body: "An intentionally edited buyer draft.",
+      },
+    ],
+  });
+  await updateTask("task-willow-disclosure", "done");
+  const daniel = state.agents.find((agent) => agent.id === "daniel")!;
+  const maya = state.agents.find((agent) => agent.id === "maya")!;
+  await updateAgentStyle("daniel", {
+    ...daniel.style,
+    examples: sampleAgents.find((agent) => agent.id === "jordan")!.style
+      .examples,
+  });
+  await updateAgentStyle("maya", {
+    ...maya.style,
+    examples: "My intentionally customized client example.",
+  });
+  const before = await getWorkspace();
+  const { db } = await getDatabase();
+  await db
+    .update(tables.workspaces)
+    .set({ sampleVersion: 3 })
+    .where(eq(tables.workspaces.id, "willow-collective"));
+  await seedDatabase(db);
+  const after = await getWorkspace();
+  assert.deepEqual(after.packages, before.packages);
+  assert.deepEqual(after.reviewHistory, before.reviewHistory);
+  assert.deepEqual(after.clients, before.clients);
+  assert.deepEqual(after.tasks, before.tasks);
+  assert.equal(
+    after.agents.find((agent) => agent.id === "daniel")!.style.examples,
+    sampleAgents.find((agent) => agent.id === "daniel")!.style.examples,
+  );
+  assert.equal(
+    after.agents.find((agent) => agent.id === "maya")!.style.examples,
+    "My intentionally customized client example.",
+  );
+  assert.equal(after.workspace.revision, before.workspace.revision! + 1);
+  await seedDatabase(db);
+  assert.equal(
+    (await getWorkspace()).workspace.revision,
+    after.workspace.revision,
+  );
+});
+
+test("concurrent mutations publish coherent monotonic snapshots and invalidate outdated AI context", async () => {
+  const before = await getWorkspace();
+  const revision = before.workspace.revision!;
+  const style = {
+    ...before.agents.find((agent) => agent.id === "daniel")!.style,
+    tone: "A distinct concurrency-test style.",
+  };
+  const snapshots = await Promise.all([
+    updateTask("task-willow-disclosure", "open"),
+    updateAgentStyle("daniel", style),
+    updateCommitment("commitment-emily-question", "resolved"),
+    getWorkspace(),
+    getWorkspace(),
+  ]);
+  for (const snapshot of snapshots) {
+    const committedChanges =
+      Number(
+        snapshot.tasks.find((task) => task.id === "task-willow-disclosure")!
+          .status === "open",
+      ) +
+      Number(
+        snapshot.agents.find((agent) => agent.id === "daniel")!.style.tone ===
+          style.tone,
+      ) +
+      Number(
+        snapshot.commitments.find(
+          (item) => item.id === "commitment-emily-question",
+        )!.status === "resolved",
+      );
+    assert.equal(
+      snapshot.workspace.revision,
+      revision + committedChanges,
+      "Each snapshot must contain exactly the mutations committed at its revision.",
+    );
+  }
+  const after = await getWorkspace();
+  assert.equal(after.workspace.revision, revision + 3);
+  await Promise.all([
+    updateTask("task-willow-disclosure", "open"),
+    updateAgentStyle("daniel", style),
+    updateCommitment("commitment-emily-question", "resolved"),
+  ]);
+  assert.equal(
+    (await getWorkspace()).workspace.revision,
+    after.workspace.revision,
+    "Retries with unchanged data must not advance the revision.",
+  );
+  await assert.rejects(
+    createConversationPackage(
+      { ...conversationInput, expectedWorkspaceRevision: revision },
+      generated(["message"]),
+    ),
+    domainError("WORKSPACE_CHANGED"),
+  );
+  const input = {
+    ...conversationInput,
+    requestId: randomUUID(),
+    expectedWorkspaceRevision: after.workspace.revision,
+  };
+  const created = await createConversationPackage(
+    input,
+    generated(["message"]),
+  );
+  assert.equal((await getWorkspace()).workspace.revision, revision + 4);
+  const retried = await createConversationPackage(
+    input,
+    generated(["message"]),
+  );
+  assert.equal(
+    retried.package.id,
+    created.package.id,
+    "A successful duplicate request remains idempotent even after its expected revision becomes old.",
+  );
+  assert.equal((await getWorkspace()).workspace.revision, revision + 4);
 });
 
 test(

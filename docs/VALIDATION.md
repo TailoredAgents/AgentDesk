@@ -1,6 +1,32 @@
 # Validation record
 
-Checked October 21, 2026. This records the initial local implementation; rerun checks after later changes.
+## Friday workflow improvements — October 21, 2026
+
+| Check | Result |
+| --- | --- |
+| `npm test` | 69 passed; one PostgreSQL-only check skipped in the default PGlite run |
+| PostgreSQL 17 domain suite | 20/20 passed in an isolated disposable database |
+| `npm run typecheck` | Passed |
+| `npm run build` | Passed; new follow-up, commitment, and sample-reset routes included |
+| `npm run test:production` | Passed against compiled Next.js and disposable PostgreSQL; health returned in 15 ms locally |
+| `npm run test:ai:live -- --allow-live` | **SKIPPED**: no `OPENAI_API_KEY` in this workspace |
+| Browser | Desktop 1440 px and mobile 390 px inspected; no console warnings/errors in the final test session |
+
+The automated suites cover evidence-based follow-up signals and urgency, no recommendations from silence alone, source ownership, new work after a previous follow-up completes, concurrent submission/approval deduplication, atomic partial approval, rejected and pending actions, original/edit audit, monotonic snapshots, stale AI results after changes or reset, sample-only restore and tenant isolation, seed upgrades preserving edits, expanded style context, grounding and date ambiguity, audio signatures, and recording lifecycle errors. Real PostgreSQL also verifies readiness independent of migration locks.
+
+Production HTTP checks exercise sign-in, secure cookies, cross-origin denial, unauthorized access, two simultaneous partial approvals producing one audit, retained pending actions, persisted edits, follow-up refresh, missing-key failure without fake output, exact reset confirmation, and restored sample data. Additional HTTP probes rejected missing consent, malformed submission IDs, and an Ogg container falsely labeled WebM without creating records.
+
+Actual browser checks used a separate disposable production workspace. Switching human agents changed Today and communication settings. Sarah's recommendation opened sourced commitments and a clearly labeled saved draft. A manually edited message and CRM note were approved, a listing update rejected, and three proposals left pending. The choices and original/edit history survived refresh. Client notes, approved drafts, listing tasks, and Team reflected the same saved records. Task completion appeared in the linked client record. Audio upload, playback, discard, consent gating, and the unavailable-AI state were verified with a synthetic fictional WAV fixture.
+
+Physical microphone capture, actual provider transcription/generation/rewriting, project-specific model availability, and live writing quality remain **unverified**. Recording lifecycle success, permission denial, unsupported formats, cleanup, canceled permission requests, and failures were tested with simulated browser devices; those tests do not establish physical-device behavior. Run the [live evaluation](AI_EVALUATION.md) and rehearse in the presentation browser before promising a live AI demo.
+
+The Render Blueprint and fail-closed startup checks remain in place. Local production success does not establish that the hosted deployment has completed or that its environment credentials are valid. No external CRM, email, SMS, or calendar integration was activated, and no external messages were sent.
+
+Current screenshots: [Today desktop](screenshots/friday-today-desktop.jpg), [Today mobile](screenshots/friday-today-mobile.jpg). See the [presentation walkthrough](DEMO_GUIDE.md).
+
+## Initial implementation — historical results
+
+Checked October 21, 2026. The following records describe the initial implementation before the Friday workflow improvements.
 
 | Check | Result |
 | --- | --- |

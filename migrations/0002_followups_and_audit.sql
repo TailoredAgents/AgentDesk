@@ -1,0 +1,16 @@
+ALTER TABLE workspaces ADD COLUMN sample_version integer NOT NULL DEFAULT 1;
+ALTER TABLE conversations DROP CONSTRAINT conversations_source_check;
+ALTER TABLE conversations ADD CONSTRAINT conversations_source_check CHECK(source IN ('note','audio','sample','followup'));
+ALTER TABLE work_packages ADD COLUMN request_id text;
+ALTER TABLE work_packages ADD COLUMN recommendation_id text;
+CREATE UNIQUE INDEX packages_workspace_request_unique ON work_packages(workspace_id,request_id);
+CREATE UNIQUE INDEX packages_workspace_recommendation_unique ON work_packages(workspace_id,recommendation_id);
+ALTER TABLE proposed_actions ADD COLUMN original jsonb;
+ALTER TABLE proposed_actions ADD COLUMN original_available boolean NOT NULL DEFAULT true;
+UPDATE proposed_actions SET original = jsonb_build_object('title',title,'body',body,'dueDate',due_date), original_available = (status = 'pending');
+ALTER TABLE proposed_actions ALTER COLUMN original SET NOT NULL;
+CREATE TABLE commitments (id text PRIMARY KEY, workspace_id text NOT NULL REFERENCES workspaces(id), agent_id text NOT NULL, client_id text NOT NULL, property_id text, conversation_id text, kind text NOT NULL CHECK(kind IN ('follow_up','question','dependency')), title text NOT NULL, detail text NOT NULL, due_date text, status text NOT NULL DEFAULT 'open' CHECK(status IN ('open','resolved')), source_quote text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), resolved_at timestamptz, UNIQUE(workspace_id,id), FOREIGN KEY(workspace_id,agent_id) REFERENCES agents(workspace_id,id), FOREIGN KEY(workspace_id,client_id) REFERENCES clients(workspace_id,id), FOREIGN KEY(workspace_id,property_id) REFERENCES properties(workspace_id,id), FOREIGN KEY(workspace_id,conversation_id) REFERENCES conversations(workspace_id,id));
+CREATE INDEX commitments_workspace_status_idx ON commitments(workspace_id,status,agent_id);
+CREATE TABLE review_audits (id text PRIMARY KEY, workspace_id text NOT NULL REFERENCES workspaces(id), package_id text NOT NULL, action_id text NOT NULL UNIQUE, agent_id text NOT NULL, client_id text NOT NULL, property_id text, decision text NOT NULL CHECK(decision IN ('approved','rejected')), original jsonb NOT NULL, edited jsonb NOT NULL, reviewed_at timestamptz NOT NULL, actor text NOT NULL, original_available boolean NOT NULL DEFAULT true, FOREIGN KEY(workspace_id,package_id) REFERENCES work_packages(workspace_id,id), FOREIGN KEY(workspace_id,action_id) REFERENCES proposed_actions(workspace_id,id), FOREIGN KEY(workspace_id,agent_id) REFERENCES agents(workspace_id,id), FOREIGN KEY(workspace_id,client_id) REFERENCES clients(workspace_id,id), FOREIGN KEY(workspace_id,property_id) REFERENCES properties(workspace_id,id));
+INSERT INTO review_audits(id,workspace_id,package_id,action_id,agent_id,client_id,property_id,decision,original,edited,reviewed_at,actor,original_available) SELECT 'legacy-' || a.id,a.workspace_id,a.package_id,a.id,p.agent_id,p.client_id,p.property_id,a.status,a.original,a.original,COALESCE(a.reviewed_at,p.created_at),'Legacy shared-workspace review; original proposal unavailable',false FROM proposed_actions a JOIN work_packages p ON p.id=a.package_id AND p.workspace_id=a.workspace_id WHERE a.status IN ('approved','rejected');
+CREATE INDEX review_audits_workspace_date_idx ON review_audits(workspace_id,reviewed_at DESC);

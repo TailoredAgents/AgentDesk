@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   ChevronRight,
   ShieldCheck,
   FileText,
   Mic,
+  Square,
+  RotateCcw,
+  Trash2,
   Upload,
   LoaderCircle,
   AlertCircle,
@@ -14,6 +17,8 @@ import {
 import type { WorkspaceData, Agent } from "@/lib/types";
 import { AssistantIcon, Modal, workforce } from "../ui";
 import { request } from "./client-api";
+import { elapsedLabel, MAX_AUDIO_BYTES } from "./recording-helpers";
+import { useVoiceRecorder } from "./use-voice-recorder";
 
 export function Capture({
   data,
@@ -24,58 +29,132 @@ export function Capture({
   data: WorkspaceData;
   agent: Agent;
   onClose: () => void;
-  onComplete: (id: string) => void;
+  onComplete: (id: string, workspace?: WorkspaceData) => void | Promise<void>;
 }) {
-  const [clientId, setClientId] = useState("sarah"),
-    [propertyId, setPropertyId] = useState("willow"),
-    [note, setNote] = useState(""),
-    [authorized, setAuthorized] = useState(false),
-    [mode, setMode] = useState("note"),
-    [file, setFile] = useState<File | null>(null),
-    [busy, setBusy] = useState(false),
-    [step, setStep] = useState(""),
-    [error, setError] = useState("");
-  const client = data.clients.find((c) => c.id === clientId)!;
-  const props = data.properties.filter((p) => p.clientId === clientId);
-  const example =
-    "Spoke with Sarah Mitchell about preparing 1420 Willow Lane for sale. Cleaning is booked for Monday, October 26. Sarah would like photography on Tuesday afternoon, October 27, but the photographer has not confirmed yet. I need to check availability with the photographer, send Sarah a preparation checklist, and follow up with her once we have a confirmed time. She asked whether the patio furniture should stay for the photos; that still needs a decision.";
+  const clients = data.clients.filter((client) => client.agentId === agent.id);
+  const [clientId, setClientId] = useState(clients[0]?.id || "");
+  const [propertyId, setPropertyId] = useState(
+    data.properties.find(
+      (p) => p.clientId === clients[0]?.id && p.agentId === agent.id,
+    )?.id || "",
+  );
+  const [note, setNote] = useState("");
+  const [authorized, setAuthorized] = useState(false);
+  const [mode, setMode] = useState<"note" | "audio">("note");
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [step, setStep] = useState("");
+  const [error, setError] = useState("");
+  const [playbackError, setPlaybackError] = useState(false);
+  const requestId = useRef<string | null>(null);
+  const audioTranscript = useRef<string | null>(null);
+  const submitting = useRef(false);
+  const client = clients.find((c) => c.id === clientId);
+  const properties = data.properties.filter(
+    (p) => p.clientId === clientId && p.agentId === agent.id,
+  );
+  const fixture = data.workspace.sample
+    ? data.conversations.find(
+        (c) =>
+          c.agentId === agent.id &&
+          c.clientId === clientId &&
+          c.propertyId === (propertyId || null) &&
+          c.source === "sample",
+      )
+    : undefined;
+  const changed = () => {
+    requestId.current = null;
+    setError("");
+  };
+  const chooseFile = (next: File | null) => {
+    changed();
+    audioTranscript.current = null;
+    if (next && (!next.size || next.size > MAX_AUDIO_BYTES)) {
+      setFile(null);
+      setError(
+        next.size
+          ? "Choose an audio file smaller than 20 MB."
+          : "The audio file is empty. Choose another recording.",
+      );
+      return;
+    }
+    setFile(next);
+  };
+  const recorder = useVoiceRecorder(chooseFile, setError);
+  const recording = recorder.state !== "idle";
+  const locked = busy || recording;
+
+  useEffect(() => {
+    setPlaybackError(false);
+    if (!file) {
+      setPreview("");
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  const startRecording = () => {
+    if (!authorized || busy) return;
+    chooseFile(null);
+    void recorder.start();
+  };
   const submit = async () => {
+    if (
+      submitting.current ||
+      recording ||
+      !authorized ||
+      !client ||
+      !data.capabilities.ai ||
+      (mode === "audio" && !data.capabilities.transcription)
+    )
+      return;
+    submitting.current = true;
     setBusy(true);
     setError("");
     try {
+      requestId.current ??= crypto.randomUUID();
       let transcript = note;
       if (mode === "audio") {
-        if (!file) throw new Error("Choose an audio recording first.");
-        setStep("Transcribing your authorized recording…");
-        const form = new FormData();
-        form.append("audio", file);
-        form.append("authorized", "true");
-        const r = await request<{ text: string }>(
-          "/api/transcribe",
-          "POST",
-          form,
-        );
-        transcript = r.text;
-        setNote(transcript);
+        if (!file) throw new Error("Choose or record authorized audio first.");
+        if (audioTranscript.current === null) {
+          setStep("Transcribing your authorized recording…");
+          const form = new FormData();
+          form.append("audio", file);
+          form.append("authorized", "true");
+          const result = await request<{ text: string }>(
+            "/api/transcribe",
+            "POST",
+            form,
+          );
+          audioTranscript.current = result.text;
+        }
+        transcript = audioTranscript.current;
       }
       setStep("Finding the facts and preparing your next steps…");
-      const r = await request<{ packageId: string; workspace?: WorkspaceData }>(
-        "/api/conversations",
-        "POST",
-        {
-          agentId: client.agentId,
-          clientId,
-          propertyId: propertyId || null,
-          title: `${client.name.split(" ")[0]} · ${props.find((p) => p.id === propertyId)?.address || "Client conversation"}`,
-          transcript,
-          authorized: true,
-          source: mode === "audio" ? "audio" : "note",
-        },
+      const result = await request<{
+        packageId: string;
+        workspace?: WorkspaceData;
+      }>("/api/conversations", "POST", {
+        requestId: requestId.current,
+        agentId: agent.id,
+        clientId,
+        propertyId: propertyId || null,
+        title: `${client.name.split(" ")[0]} · ${properties.find((p) => p.id === propertyId)?.address || "Client conversation"}`,
+        transcript,
+        authorized: true,
+        source: mode === "audio" ? "audio" : "note",
+      });
+      await onComplete(result.packageId, result.workspace);
+    } catch (error) {
+      setError(
+        (error as Error).message ||
+          "The conversation could not be prepared. Your inputs are still here so you can retry.",
       );
-      onComplete(r.packageId);
-    } catch (e) {
-      setError((e as Error).message);
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   };
@@ -93,29 +172,35 @@ export function Capture({
           <div className="info-strip">
             <AlertCircle size={18} />
             <p>
-              <strong>Live AI hasn’t been connected yet.</strong> Add an OpenAI
-              API key on the server to process new conversations. The Review
-              workspace already contains clearly labeled saved sample work you
-              can edit and approve.
+              <strong>Live AI hasn’t been connected yet.</strong> You can write
+              notes and record or preview audio locally. A server OpenAI API key
+              is required to transcribe and prepare new work. Clearly labeled
+              saved sample work is available in Review.
             </p>
           </div>
         )}
         <div className="capture-selects">
           <label>
-            Client
+            Client · {agent.name}
             <select
               value={clientId}
-              onChange={(e) => {
-                setClientId(e.target.value);
+              disabled={locked}
+              onChange={(event) => {
+                changed();
+                setClientId(event.target.value);
                 setPropertyId(
-                  data.properties.find((p) => p.clientId === e.target.value)
-                    ?.id || "",
+                  data.properties.find(
+                    (p) =>
+                      p.clientId === event.target.value &&
+                      p.agentId === agent.id,
+                  )?.id || "",
                 );
               }}
             >
-              {data.clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
+              {!clients.length && <option value="">No clients assigned</option>}
+              {clients.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
                 </option>
               ))}
             </select>
@@ -124,12 +209,16 @@ export function Capture({
             Related property
             <select
               value={propertyId}
-              onChange={(e) => setPropertyId(e.target.value)}
+              disabled={locked}
+              onChange={(event) => {
+                changed();
+                setPropertyId(event.target.value);
+              }}
             >
               <option value="">No linked property</option>
-              {props.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.address}
+              {properties.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.address}
                 </option>
               ))}
             </select>
@@ -137,44 +226,72 @@ export function Capture({
         </div>
         <div className="underline-tabs capture-tabs">
           <button
+            disabled={locked}
             className={mode === "note" ? "active" : ""}
-            onClick={() => setMode("note")}
+            onClick={() => {
+              if (mode !== "note") changed();
+              setMode("note");
+            }}
           >
             <FileText size={15} />
             Written notes
           </button>
           <button
+            disabled={locked}
             className={mode === "audio" ? "active" : ""}
-            onClick={() => setMode("audio")}
+            onClick={() => {
+              if (mode !== "audio") changed();
+              setMode("audio");
+            }}
           >
             <Mic size={15} />
             Audio recording
           </button>
         </div>
+        <label className="consent">
+          <input
+            type="checkbox"
+            checked={authorized}
+            disabled={locked}
+            onChange={(event) => setAuthorized(event.target.checked)}
+          />
+          <span>
+            I have the required consent to record and am authorized to share
+            these notes or this recording with OpenAI when I select Prepare my
+            work. The transcript and prepared work will be saved in AgentDesk.
+            Audio is not saved on the server.
+          </span>
+        </label>
         {mode === "note" ? (
           <>
             <div className="note-label">
               <label htmlFor="conversation-note">
                 What did you talk about?
               </label>
-              <button
-                className="text-link"
-                onClick={() => {
-                  setNote(example);
-                  setClientId("sarah");
-                  setPropertyId("willow");
-                }}
-              >
-                Use sample conversation
-                <ArrowDownIcon />
-              </button>
+              {fixture && (
+                <button
+                  className="text-link"
+                  disabled={busy}
+                  onClick={() => {
+                    changed();
+                    setNote(fixture.transcript);
+                  }}
+                >
+                  Use saved fictional {client?.name.split(" ")[0]} example
+                  <ArrowRight size={12} />
+                </button>
+              )}
             </div>
             <textarea
               id="conversation-note"
               className="capture-textarea"
-              placeholder="Just spoke with Sarah about getting the house ready. Cleaning is booked for Monday…"
+              placeholder="Describe the conversation, what is confirmed, what is still uncertain, and any next steps…"
               value={note}
-              onChange={(e) => setNote(e.target.value)}
+              disabled={busy}
+              onChange={(event) => {
+                changed();
+                setNote(event.target.value);
+              }}
               maxLength={24000}
             />
             <span className="char-count">
@@ -182,45 +299,127 @@ export function Capture({
             </span>
           </>
         ) : (
-          <label className="audio-upload">
-            <span className="upload-icon">
-              <Upload size={26} />
-            </span>
-            <strong>
-              {file ? file.name : "Choose an authorized recording"}
-            </strong>
-            <span>MP3, M4A, WAV, MP4, or WebM · up to 20 MB</span>
-            <input
-              type="file"
-              accept="audio/mpeg,audio/mp4,audio/wav,audio/webm,video/mp4,.m4a"
-              onChange={(e) => {
-                setFile(e.target.files?.[0] || null);
-                setError("");
-              }}
-            />
-            <small>
-              Audio is transcribed in memory and is not kept on disk.
-            </small>
-          </label>
+          <>
+            <div className="voice-recorder">
+              <div className="recorder-heading">
+                <Mic size={19} />
+                <div>
+                  <strong>Record a voice note</strong>
+                  <p>Review the audio before sharing it for transcription.</p>
+                </div>
+              </div>
+              {recorder.supported === false && (
+                <p className="recording-help" role="status">
+                  Microphone recording isn’t supported here. Use HTTPS or
+                  localhost in a compatible browser, or use the upload and
+                  written-note alternatives.
+                </p>
+              )}
+              <div className="recorder-actions">
+                {recorder.state === "recording" ? (
+                  <>
+                    <span className="recording-status" role="status">
+                      <span />
+                      Recording <time>{elapsedLabel(recorder.elapsed)}</time>
+                    </span>
+                    <button
+                      className="button secondary"
+                      onClick={recorder.stop}
+                    >
+                      <Square size={14} />
+                      Stop recording
+                    </button>
+                  </>
+                ) : recorder.state === "requesting" ? (
+                  <>
+                    <span role="status">
+                      Waiting for microphone permission…
+                    </span>
+                    <button className="text-link" onClick={recorder.cancel}>
+                      Cancel
+                    </button>
+                  </>
+                ) : recorder.state === "stopping" ? (
+                  <span role="status">
+                    <LoaderCircle size={15} className="spin" />
+                    Preparing playback…
+                  </span>
+                ) : (
+                  <button
+                    className="button secondary"
+                    disabled={!authorized || busy || !recorder.supported}
+                    onClick={startRecording}
+                  >
+                    {file ? <RotateCcw size={15} /> : <Mic size={15} />}
+                    {file ? "Rerecord" : "Record voice note"}
+                  </button>
+                )}
+                {!authorized && (
+                  <small>Confirm consent above to enable the microphone.</small>
+                )}
+              </div>
+              {preview && !recording && (
+                <div className="audio-preview">
+                  <strong>{file?.name}</strong>
+                  <audio
+                    controls
+                    src={preview}
+                    preload="metadata"
+                    aria-label="Recording playback"
+                    onError={() => setPlaybackError(true)}
+                  />
+                  {playbackError && (
+                    <p role="alert">
+                      This browser could not play this file. Choose a format you
+                      can preview before submitting.
+                    </p>
+                  )}
+                  <button
+                    className="text-link"
+                    disabled={busy}
+                    onClick={() => chooseFile(null)}
+                  >
+                    <Trash2 size={13} />
+                    Discard recording
+                  </button>
+                </div>
+              )}
+            </div>
+            <label
+              className={`audio-upload compact-upload ${locked ? "disabled-upload" : ""}`}
+            >
+              <Upload size={22} />
+              <strong>Or upload an authorized recording</strong>
+              <span>MP3, M4A, WAV, MP4, WebM, or OGG · up to 20 MB</span>
+              <input
+                type="file"
+                aria-label="Upload an authorized recording"
+                disabled={locked}
+                accept="audio/mpeg,audio/mp4,audio/wav,audio/x-wav,audio/webm,audio/ogg,video/mp4,.m4a,.mp3,.mpga,.mpeg,.wav,.webm,.ogg"
+                onChange={(event) => {
+                  const next = event.target.files?.[0];
+                  if (next) chooseFile(next);
+                  event.target.value = "";
+                }}
+              />
+              <small>
+                Audio stays in this browser until you select Prepare my work.
+              </small>
+            </label>
+            {data.capabilities.ai && !data.capabilities.transcription && (
+              <p className="recording-help">
+                Transcription is unavailable. You can keep working with written
+                notes.
+              </p>
+            )}
+          </>
         )}
-        <label className="consent">
-          <input
-            type="checkbox"
-            checked={authorized}
-            onChange={(e) => setAuthorized(e.target.checked)}
-          />
-          <span>
-            I’m authorized to share these notes or this recording with OpenAI
-            for processing and have the required consent. The transcript and
-            prepared work will be saved in AgentDesk.
-          </span>
-        </label>
         <div className="pipeline-preview">
-          {[1, 2, 3].map((i) => (
-            <span key={i}>
-              <AssistantIcon index={i} small />
-              {workforce[i].short}
-              {i < 3 && <ChevronRight size={13} />}
+          {[1, 2, 3].map((index) => (
+            <span key={index}>
+              <AssistantIcon index={index} small />
+              {workforce[index].short}
+              {index < 3 && <ChevronRight size={13} />}
             </span>
           ))}
         </div>
@@ -245,9 +444,12 @@ export function Capture({
             className="button primary"
             disabled={
               !data.capabilities.ai ||
-              busy ||
+              locked ||
               !authorized ||
-              (mode === "note" ? note.trim().length < 30 : !file)
+              !client ||
+              (mode === "note"
+                ? note.trim().length < 30
+                : !file || !data.capabilities.transcription || playbackError)
             }
             onClick={submit}
           >
@@ -262,8 +464,4 @@ export function Capture({
       </div>
     </Modal>
   );
-}
-
-function ArrowDownIcon() {
-  return <ArrowRight size={12} style={{ transform: "rotate(45deg)" }} />;
 }

@@ -15,6 +15,8 @@ export type ProposedAction = {
   dueDate: string | null;
   sourceQuote: string;
   certainty: "confirmed" | "requested" | "uncertain";
+  original?: { title: string; body: string; dueDate: string | null };
+  originalAvailable?: boolean;
 };
 export type Agent = {
   id: string;
@@ -23,7 +25,16 @@ export type Agent = {
   initials: string;
   color: string;
   email: string;
-  style: { tone: string; length: string; avoid: string; examples: string };
+  style: {
+    tone: string;
+    length: string;
+    avoid: string;
+    examples: string;
+    directness?: string;
+    greeting?: string;
+    signoff?: string;
+    preferredWords?: string;
+  };
 };
 export type Client = {
   id: string;
@@ -62,6 +73,8 @@ export type Task = {
   priority: "high" | "normal";
   source: string;
   createdAt: string;
+  reviewPackageId?: string | null;
+  sourceActionId?: string | null;
 };
 export type Conversation = {
   id: string;
@@ -70,7 +83,7 @@ export type Conversation = {
   propertyId: string | null;
   title: string;
   transcript: string;
-  source: "note" | "audio" | "sample";
+  source: "note" | "audio" | "sample" | "followup";
   createdAt: string;
 };
 export type WorkPackage = {
@@ -87,6 +100,9 @@ export type WorkPackage = {
   status: "pending" | "reviewed";
   origin: "sample" | "openai";
   createdAt: string;
+  requestId?: string | null;
+  recommendationId?: string | null;
+  signalIds?: string[];
 };
 export type Appointment = {
   id: string;
@@ -110,12 +126,59 @@ export type Activity = {
   kind: string;
   createdAt: string;
 };
+export type Commitment = {
+  id: string;
+  agentId: string;
+  clientId: string;
+  propertyId: string | null;
+  conversationId: string | null;
+  kind: "follow_up" | "question" | "dependency";
+  title: string;
+  detail: string;
+  dueDate: string | null;
+  status: "open" | "resolved";
+  sourceQuote: string;
+  createdAt: string;
+  resolvedAt: string | null;
+};
+export type ReviewAudit = {
+  id: string;
+  packageId: string;
+  actionId: string;
+  agentId: string;
+  clientId: string;
+  propertyId: string | null;
+  decision: "approved" | "rejected";
+  original: { title: string; body: string; dueDate: string | null };
+  edited: { title: string; body: string; dueDate: string | null };
+  reviewedAt: string;
+  actor: string;
+  originalAvailable: boolean;
+};
+export type FollowUpRecommendation = {
+  id: string;
+  agentId: string;
+  clientId: string;
+  propertyId: string | null;
+  title: string;
+  reason: string;
+  urgency: "overdue" | "due" | "upcoming" | "unresolved";
+  dueDate: string | null;
+  taskIds: string[];
+  commitmentIds: string[];
+  evidence: string[];
+  sourceSnapshot: string;
+  packageId: string | null;
+  status: "needs_draft" | "ready_for_review" | "approved_draft" | "reviewed";
+  uncertainties: string[];
+};
 export type WorkspaceData = {
   workspace: {
     id: string;
     name: string;
     sample: boolean;
     referenceDate: string;
+    revision?: number;
   };
   agents: Agent[];
   clients: Client[];
@@ -125,6 +188,9 @@ export type WorkspaceData = {
   packages: WorkPackage[];
   appointments: Appointment[];
   activities: Activity[];
+  commitments: Commitment[];
+  recommendations: FollowUpRecommendation[];
+  reviewHistory: ReviewAudit[];
   capabilities: {
     ai: boolean;
     transcription: boolean;

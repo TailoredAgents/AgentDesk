@@ -18,7 +18,7 @@ import {
   CheckCircle2,
   Settings2,
 } from "lucide-react";
-import type { WorkspaceData, Task } from "@/lib/types";
+import type { WorkspaceData, Task, Commitment } from "@/lib/types";
 import {
   AssistantIcon,
   Avatar,
@@ -40,6 +40,7 @@ import { Capture } from "./workspace/capture";
 import { Settings } from "./workspace/settings";
 import { SearchPanel } from "./workspace/search-panel";
 import { request } from "./workspace/client-api";
+import { FollowUp } from "./workspace/follow-up";
 
 const viewNames: Record<View, string> = {
   today: "Today",
@@ -47,6 +48,21 @@ const viewNames: Record<View, string> = {
   listings: "Listings",
   team: "Team",
 };
+
+function previewAgent(data: WorkspaceData, id: string | null) {
+  const ordered = [...data.agents].sort((left, right) =>
+    left.name.localeCompare(right.name),
+  );
+  return (
+    ordered.find((person) => person.id === id) ||
+    ordered.find((person) =>
+      data.packages.some(
+        (pkg) => pkg.agentId === person.id && pkg.status === "pending",
+      ),
+    ) ||
+    ordered[0]
+  );
+}
 
 export default function AgentDesk() {
   const [data, setData] = useState<WorkspaceData | null>(null),
@@ -58,23 +74,61 @@ export default function AgentDesk() {
     [selectedPackage, setSelectedPackage] = useState<string | null>(null),
     [property, setProperty] = useState<string | null>(null),
     [client, setClient] = useState<string | null>(null),
-    [leader, setLeader] = useState(false);
+    [leader, setLeader] = useState(false),
+    [agentId, setAgentId] = useState<string | null>(null),
+    [followUpId, setFollowUpId] = useState<string | null>(null),
+    [preparing, setPreparing] = useState(false);
+  const applyData = useCallback((incoming: WorkspaceData) => {
+    setData((current) =>
+      !current ||
+      current.workspace.id !== incoming.workspace.id ||
+      (incoming.workspace.revision ?? 0) >= (current.workspace.revision ?? 0)
+        ? incoming
+        : current,
+    );
+  }, []);
   const refresh = useCallback(async () => {
     try {
       const value = await request<WorkspaceData>("/api/workspace");
-      setData(value);
+      applyData(value);
       setError("");
     } catch (e) {
       setError((e as Error).message);
     }
-  }, []);
+  }, [applyData]);
   useEffect(() => {
     if (panel) setMobile(false);
   }, [panel]);
   useEffect(() => {
+    const owner =
+      view === "review"
+        ? data?.packages.find((pkg) => pkg.id === selectedPackage)?.agentId
+        : undefined;
+    if (
+      data &&
+      ((owner && owner !== agentId) ||
+        !data.agents.some((person) => person.id === agentId))
+    ) {
+      const id = owner || previewAgent(data, null).id;
+      setAgentId(id);
+      try {
+        window.localStorage.setItem("agentdesk-preview-agent", id);
+      } catch {
+        /* storage is optional */
+      }
+    }
+  }, [data, agentId, selectedPackage, view]);
+  useEffect(() => {
     refresh();
+    try {
+      setAgentId(window.localStorage.getItem("agentdesk-preview-agent"));
+    } catch {
+      /* storage is optional */
+    }
     const read = () => {
-      const v = new URLSearchParams(window.location.search).get("view");
+      const query = new URLSearchParams(window.location.search);
+      const v = query.get("view");
+      setSelectedPackage(query.get("package"));
       if (v && v in viewNames) setView(v as View);
       else setView("today");
     };
@@ -108,13 +162,73 @@ export default function AgentDesk() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const review = (id?: string) => {
-    if (id) setSelectedPackage(id);
+    if (id) {
+      setSelectedPackage(id);
+      const owner = data?.packages.find((pkg) => pkg.id === id)?.agentId;
+      if (owner) selectAgent(owner);
+    }
     navigate("review");
+    if (id) selectPackage(id);
+  };
+  const selectPackage = (id: string) => {
+    setSelectedPackage(id);
+    const query = new URLSearchParams(window.location.search);
+    query.set("view", "review");
+    query.set("package", id);
+    window.history.replaceState(null, "", `/?${query.toString()}`);
+  };
+  const selectAgent = (id: string) => {
+    setAgentId(id);
+    try {
+      window.localStorage.setItem("agentdesk-preview-agent", id);
+    } catch {
+      /* storage is optional */
+    }
   };
   const notify = (message: string) => setToast(message);
+  const prepareFollowUps = async (id?: string) => {
+    if (!data || preparing) return;
+    setPreparing(true);
+    try {
+      const result = await request<{
+        workspace: WorkspaceData;
+        prepared: number;
+      }>("/api/follow-ups", "POST", {
+        agentId: previewAgent(data, agentId).id,
+        ...(id ? { recommendationId: id } : {}),
+      });
+      applyData(result.workspace);
+      notify(
+        result.prepared
+          ? `${result.prepared} personalized follow-up drafts prepared for review.`
+          : "Recommendations refreshed from saved records. Existing drafts are preserved.",
+      );
+    } catch (e) {
+      await refresh();
+      notify((e as Error).message);
+    } finally {
+      setPreparing(false);
+    }
+  };
+  const toggleCommitment = async (item: Commitment) => {
+    try {
+      applyData(
+        await request<WorkspaceData>(`/api/commitments/${item.id}`, "PATCH", {
+          status: item.status === "open" ? "resolved" : "open",
+        }),
+      );
+      notify(
+        item.status === "open"
+          ? "Commitment marked resolved by you."
+          : "Commitment reopened.",
+      );
+    } catch (e) {
+      notify((e as Error).message);
+    }
+  };
   const toggleTask = async (task: Task) => {
     try {
-      setData(
+      applyData(
         await request<WorkspaceData>(`/api/tasks/${task.id}`, "PATCH", {
           status: task.status === "done" ? "open" : "done",
         }),
@@ -145,8 +259,11 @@ export default function AgentDesk() {
         )}
       </div>
     );
-  const agent = data.agents.find((a) => a.id === "jordan") || data.agents[0];
-  const pending = data.packages.filter((p) => p.status === "pending");
+  const agent = previewAgent(data, agentId);
+  const pending = data.packages.filter(
+    (p) => p.agentId === agent.id && p.status === "pending",
+  );
+  const followUp = data.recommendations.find((item) => item.id === followUpId);
   const close = () => setPanel(null);
   return (
     <div className="app-shell">
@@ -302,6 +419,7 @@ export default function AgentDesk() {
         <main className={`main-content view-${view}`}>
           {view === "today" && (
             <Today
+              key={agent.id}
               data={data}
               agent={agent}
               onReview={review}
@@ -311,16 +429,20 @@ export default function AgentDesk() {
               onTask={toggleTask}
               onView={navigate}
               onWorkforce={() => setPanel("workforce")}
+              onFollowUp={setFollowUpId}
+              onRefresh={() => prepareFollowUps()}
+              refreshing={preparing}
             />
           )}
           {view === "review" && (
             <Review
+              key={agent.id}
               data={data}
               agent={agent}
               selected={selectedPackage}
-              setSelected={setSelectedPackage}
+              setSelected={selectPackage}
               onCapture={() => setPanel("capture")}
-              onUpdate={setData}
+              onUpdate={applyData}
               notify={notify}
               onProperty={setProperty}
             />
@@ -362,8 +484,12 @@ export default function AgentDesk() {
           data={data}
           agent={agent}
           onClose={close}
-          onComplete={async (id) => {
-            await refresh();
+          onComplete={async (id, updated) => {
+            const saved =
+              updated || (await request<WorkspaceData>("/api/workspace"));
+            applyData(saved);
+            const owner = saved.packages.find((pkg) => pkg.id === id)?.agentId;
+            if (owner) selectAgent(owner);
             close();
             review(id);
           }}
@@ -396,7 +522,9 @@ export default function AgentDesk() {
                   ? "Live AI is configured."
                   : "Live AI is not configured. Saved sample results are available."}{" "}
                 Assistants prepare proposals together. Only your approval
-                changes client and listing records.
+                applies proposed changes to client and listing records.
+                Recommendations are evaluated when the workspace refreshes; no
+                background monitoring is running.
               </p>
             </div>
           </div>
@@ -501,12 +629,17 @@ export default function AgentDesk() {
       )}
       {panel === "settings" && (
         <Settings
+          key={agent.id}
           data={data}
           agent={agent}
           leader={leader}
           onLeader={setLeader}
+          onAgentChange={(id) => {
+            selectAgent(id);
+            setSelectedPackage(null);
+          }}
           onClose={close}
-          onUpdate={setData}
+          onUpdate={applyData}
           notify={notify}
         />
       )}
@@ -516,6 +649,7 @@ export default function AgentDesk() {
           data={data}
           onClose={() => setProperty(null)}
           onTask={toggleTask}
+          onCommitment={toggleCommitment}
           onReview={(id) => {
             setProperty(null);
             review(id);
@@ -530,9 +664,36 @@ export default function AgentDesk() {
         <ClientDetail
           client={data.clients.find((c) => c.id === client)!}
           data={data}
+          onCommitment={toggleCommitment}
+          onTask={toggleTask}
+          onReview={(id) => {
+            setClient(null);
+            review(id);
+          }}
           onClose={() => setClient(null)}
           onProperty={(id) => {
             setClient(null);
+            setProperty(id);
+          }}
+        />
+      )}
+      {followUp && (
+        <FollowUp
+          item={followUp}
+          data={data}
+          busy={preparing}
+          onClose={() => setFollowUpId(null)}
+          onReview={(id) => {
+            setFollowUpId(null);
+            review(id);
+          }}
+          onPrepare={() => prepareFollowUps(followUp.id)}
+          onClient={(id) => {
+            setFollowUpId(null);
+            setClient(id);
+          }}
+          onProperty={(id) => {
+            setFollowUpId(null);
             setProperty(id);
           }}
         />

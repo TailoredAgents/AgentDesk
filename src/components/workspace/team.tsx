@@ -11,6 +11,7 @@ import {
   shortDate,
 } from "../ui";
 import { Progress } from "./shared";
+import { isOverdue, teamInsights } from "@/lib/workspace-insights";
 
 export function Team({
   data,
@@ -28,12 +29,16 @@ export function Team({
   const open = data.tasks.filter((t) => t.status === "open");
   const completed = data.tasks.filter((t) => t.status === "done");
   const pending = data.packages.filter((p) => p.status === "pending");
-  const bottlenecks = data.properties
+  const insight = teamInsights(data);
+  const bottlenecks = insight.listings
     .map((p) => ({
       p,
-      tasks: open.filter((t) => t.propertyId === p.id && t.priority === "high"),
+      tasks: open.filter((t) => t.propertyId === p.id),
+      dependencies: insight.dependencies.filter(
+        (item) => item.propertyId === p.id,
+      ),
     }))
-    .filter((p) => p.tasks.length);
+    .filter((p) => p.tasks.length || p.dependencies.length);
   return (
     <>
       <div className="page-heading">
@@ -43,7 +48,8 @@ export function Team({
             Good work, together<span className="heading-dot">.</span>
           </h1>
           <p>
-            Six people. Individual strengths. A little support where it counts.
+            {data.agents.length} people. Individual strengths. A little support
+            where it counts.
           </p>
         </div>
         <button className="button secondary" onClick={onSettings}>
@@ -57,10 +63,12 @@ export function Team({
           <div className="eyebrow">A NOTE FROM YOUR TEAM COACH</div>
           <h2>A few small moves can make a big difference.</h2>
           <p>
-            Your team has completed <strong>{completed.length} tasks</strong>.{" "}
-            {pending.length} work packages are waiting for a human touch, and{" "}
-            {bottlenecks.length} properties have high-priority items to move
-            forward. Start there.
+            {insight.summary} {insight.coaching}
+          </p>
+          <p className="small-text">
+            {completed.length} tasks marked complete · {insight.liveUsers}{" "}
+            agents with live AI packages · {insight.livePackages.length} live AI
+            packages. Saved sample output is excluded from live usage.
           </p>
         </div>
         <Badge tone="white">Based on workspace records</Badge>
@@ -81,6 +89,8 @@ export function Team({
                 <th>TEAM MEMBER</th>
                 <th>LISTINGS</th>
                 <th>OPEN TASKS</th>
+                <th>FOLLOW-UPS</th>
+                <th>OVERDUE</th>
                 <th>COMPLETED</th>
                 <th>IN REVIEW</th>
                 <th>WORK PREPARED</th>
@@ -91,6 +101,9 @@ export function Team({
                 const tasks = data.tasks.filter((t) => t.agentId === a.id);
                 const done = tasks.filter((t) => t.status === "done").length;
                 const pkgs = data.packages.filter((p) => p.agentId === a.id);
+                const followUps = data.recommendations.filter(
+                  (item) => item.agentId === a.id,
+                );
                 return (
                   <tr key={a.id}>
                     <td>
@@ -106,6 +119,26 @@ export function Team({
                       {data.properties.filter((p) => p.agentId === a.id).length}
                     </td>
                     <td>{tasks.filter((t) => t.status === "open").length}</td>
+                    <td>
+                      {followUps.length ? (
+                        <button
+                          className="review-table-link"
+                          onClick={() => onClient(followUps[0].clientId)}
+                        >
+                          {followUps.length} open
+                          <ArrowUpRight size={13} />
+                        </button>
+                      ) : (
+                        "0"
+                      )}
+                    </td>
+                    <td>
+                      {
+                        tasks.filter((task) =>
+                          isOverdue(task, data.workspace.referenceDate),
+                        ).length
+                      }
+                    </td>
                     <td>
                       <div className="completion-cell">
                         <strong>
@@ -140,8 +173,18 @@ export function Team({
                     </td>
                     <td>
                       <span className="prepared-count">
-                        {pkgs.reduce((n, p) => n + p.actions.length, 0)} actions
+                        {pkgs.filter((p) => p.origin === "openai").length} live
+                        · {pkgs.filter((p) => p.origin === "sample").length}{" "}
+                        saved
                       </span>
+                      <div className="small-text muted">
+                        {
+                          data.activities.filter(
+                            (item) => item.agentId === a.id,
+                          ).length
+                        }{" "}
+                        recorded activities
+                      </div>
                     </td>
                   </tr>
                 );
@@ -158,7 +201,7 @@ export function Team({
               <Badge tone="amber">{bottlenecks.length} need attention</Badge>
             }
           />
-          {bottlenecks.map(({ p, tasks }) => (
+          {bottlenecks.map(({ p, tasks, dependencies }) => (
             <button
               key={p.id}
               className="bottleneck"
@@ -167,11 +210,11 @@ export function Team({
               <img src={p.image} alt="" />
               <div>
                 <h3>{p.address}</h3>
-                <p>{tasks[0].title}</p>
+                <p>{dependencies[0]?.title || tasks[0]?.title}</p>
                 <span>
                   {data.agents.find((a) => a.id === p.agentId)?.name} ·{" "}
-                  {tasks.length} priority{" "}
-                  {tasks.length === 1 ? "item" : "items"}
+                  {tasks.length} open tasks · {dependencies.length} unresolved
+                  dependencies
                 </span>
               </div>
               <ArrowUpRight size={17} />
@@ -180,7 +223,7 @@ export function Team({
           {!bottlenecks.length && (
             <Empty
               title="Nothing holding you back"
-              description="No high-priority listing tasks are outstanding."
+              description="No recorded listing tasks or dependencies are outstanding."
             />
           )}
         </section>
@@ -205,7 +248,8 @@ export function Team({
       <div className="team-disclosure">
         <ShieldCheck size={15} />
         Leadership preview uses the shared sample workspace. It is not a
-        production permission boundary.
+        production permission boundary. Counts describe available records, not
+        productivity or external client contact.
       </div>
     </>
   );

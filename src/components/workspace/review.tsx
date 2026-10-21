@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
   Plus,
   ChevronDown,
-  Check,
   CheckCheck,
   CalendarDays,
   Copy,
@@ -13,7 +12,6 @@ import {
   ShieldCheck,
   LoaderCircle,
   AlertCircle,
-  X,
   AudioLines,
 } from "lucide-react";
 import type {
@@ -21,9 +19,11 @@ import type {
   Agent,
   ProposedAction,
   ReviewInput,
+  Decision,
 } from "@/lib/types";
 import { AssistantIcon, Badge, Empty, shortDate } from "../ui";
 import { request } from "./client-api";
+import { reviewEffect, selectedReviewDecisions } from "./review-helpers";
 
 export function Review({
   data,
@@ -49,12 +49,23 @@ export function Review({
     ),
     [edits, setEdits] = useState<Record<string, string>>({}),
     [dates, setDates] = useState<Record<string, string>>({}),
-    [decisions, setDecisions] = useState<
-      Record<string, "approved" | "rejected">
-    >({}),
+    [decisions, setDecisions] = useState<Record<string, Decision>>({}),
     [busy, setBusy] = useState(false),
     [rewriting, setRewriting] = useState("");
-  const list = data.packages.filter((p) => p.status === tab);
+  const saving = useRef(false);
+  const drafts = useRef<
+    Record<
+      string,
+      {
+        edits: Record<string, string>;
+        dates: Record<string, string>;
+        decisions: Record<string, Decision>;
+      }
+    >
+  >({});
+  const activeDraft = useRef<string | null>(null);
+  const agentPackages = data.packages.filter((p) => p.agentId === agent.id);
+  const list = agentPackages.filter((p) => p.status === tab);
   const pkg = list.find((p) => p.id === selected) || list[0];
   const conversation = data.conversations.find(
     (c) => c.id === pkg?.conversationId,
@@ -62,47 +73,61 @@ export function Review({
   const client = data.clients.find((c) => c.id === pkg?.clientId);
   const property = data.properties.find((p) => p.id === pkg?.propertyId);
   const pending = pkg?.actions.filter((a) => a.status === "pending") || [];
+  const chosen = selectedReviewDecisions(pending, decisions, edits, dates);
+  const approved = chosen.filter((a) => a.status === "approved");
+  const rejected = chosen.filter((a) => a.status === "rejected");
+  const remaining = pending.length - chosen.length;
+  const completedReviewTasks =
+    pkg && chosen.length > 0 && remaining === 0
+      ? data.tasks.filter(
+          (task) => task.status === "open" && task.reviewPackageId === pkg.id,
+        )
+      : [];
+  const locked = busy || !!rewriting;
   useEffect(() => {
-    setEdits({});
-    setDecisions({});
-    setDates({});
+    if (activeDraft.current)
+      drafts.current[activeDraft.current] = { edits, dates, decisions };
+    activeDraft.current = pkg?.id || null;
+    const draft = pkg ? drafts.current[pkg.id] : undefined;
+    setEdits(draft?.edits || {});
+    setDecisions(draft?.decisions || {});
+    setDates(draft?.dates || {});
   }, [pkg?.id]);
   useEffect(() => {
-    const target = data.packages.find((p) => p.id === selected);
+    const target = agentPackages.find((p) => p.id === selected);
     if (target) setTab(target.status);
-  }, [selected]);
+  }, [selected, agent.id, data.packages]);
   const save = async () => {
-    if (!pkg) return;
+    if (!pkg || !chosen.length || saving.current || rewriting) return;
+    saving.current = true;
     setBusy(true);
     try {
-      const input: ReviewInput = {
-        decisions: pending.map((a) => ({
-          id: a.id,
-          status: decisions[a.id] || "approved",
-          body: (edits[a.id] ?? a.body).trim() || a.body,
-          dueDate: a.id in dates ? dates[a.id] || null : a.dueDate,
-        })),
-      };
-      onUpdate(
-        await request<WorkspaceData>(
-          `/api/packages/${pkg.id}/review`,
-          "POST",
-          input,
-        ),
+      const input: ReviewInput = { decisions: chosen };
+      const updated = await request<WorkspaceData>(
+        `/api/packages/${pkg.id}/review`,
+        "POST",
+        input,
       );
+      onUpdate(updated);
+      setDecisions({});
       notify(
-        "Review saved. Approved work is now in your workspace. No messages were sent.",
+        remaining
+          ? `Decisions saved. ${remaining} ${remaining === 1 ? "action remains" : "actions remain"} pending. No messages were sent.`
+          : "Review saved. Approved work is now in your workspace. No messages were sent.",
       );
-      setTab("reviewed");
+      setTab(
+        updated.packages.find((p) => p.id === pkg.id)?.status || "pending",
+      );
     } catch (e) {
       notify((e as Error).message);
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   };
   const rewrite = async (action: ProposedAction, instruction: string) => {
-    if (!pkg) return;
-    setRewriting(instruction);
+    if (!pkg || locked) return;
+    setRewriting(`${action.id}:${instruction}`);
     try {
       const res = await request<{ body: string }>(
         `/api/packages/${pkg.id}/rewrite`,
@@ -131,7 +156,11 @@ export function Review({
           </h1>
           <p>Your workforce prepares. You make it yours.</p>
         </div>
-        <button className="button primary" onClick={onCapture}>
+        <button
+          className="button primary"
+          onClick={onCapture}
+          disabled={locked}
+        >
           <Plus size={17} />
           New conversation
         </button>
@@ -140,20 +169,22 @@ export function Review({
         <div className="underline-tabs">
           <button
             className={tab === "pending" ? "active" : ""}
+            disabled={locked}
             onClick={() => setTab("pending")}
           >
             Needs your review{" "}
             <span>
-              {data.packages.filter((p) => p.status === "pending").length}
+              {agentPackages.filter((p) => p.status === "pending").length}
             </span>
           </button>
           <button
             className={tab === "reviewed" ? "active" : ""}
+            disabled={locked}
             onClick={() => setTab("reviewed")}
           >
             Reviewed{" "}
             <span>
-              {data.packages.filter((p) => p.status === "reviewed").length}
+              {agentPackages.filter((p) => p.status === "reviewed").length}
             </span>
           </button>
         </div>
@@ -182,6 +213,7 @@ export function Review({
               <button
                 key={p.id}
                 onClick={() => setSelected(p.id)}
+                disabled={locked}
                 className={p.id === pkg.id ? "selected" : ""}
               >
                 <AssistantIcon index={1} small />
@@ -210,7 +242,9 @@ export function Review({
                   {shortDate(pkg.createdAt)} · {client?.name} ·{" "}
                   {conversation?.source === "audio"
                     ? "Authorized audio"
-                    : "Conversation notes"}
+                    : conversation?.source === "followup"
+                      ? "Recorded relationship context"
+                      : "Conversation notes"}
                 </p>
               </div>
               {property && (
@@ -282,14 +316,31 @@ export function Review({
                 </div>
               </div>
               <p className="actions-help">
-                Edit the details, keep what’s useful, and approve when it feels
-                right.
+                Choose Pending, Approved, or Rejected for each proposal. Only
+                your explicit decisions are saved when you confirm. Pending
+                edits stay unsaved until you decide.
               </p>
+              {pending.length > 0 && (
+                <button
+                  className="text-link approve-all"
+                  disabled={locked}
+                  onClick={() =>
+                    setDecisions(
+                      Object.fromEntries(
+                        pending.map((a) => [a.id, "approved"]),
+                      ),
+                    )
+                  }
+                >
+                  <CheckCheck size={14} /> Approve all {pending.length} pending
+                  proposals
+                </button>
+              )}
               <div className="action-cards">
                 {pkg.actions.map((a) => {
                   const state =
                     a.status === "pending"
-                      ? decisions[a.id] || "approved"
+                      ? decisions[a.id] || "pending"
                       : a.status;
                   const role =
                     a.kind === "message"
@@ -306,26 +357,22 @@ export function Review({
                         <AssistantIcon index={role} small />
                         <span>{a.kind.replace("_", " ")}</span>
                         {a.status === "pending" ? (
-                          <button
-                            className={`keep-toggle ${state}`}
-                            aria-label={`${state === "rejected" ? "Include" : "Exclude"} ${a.title}`}
-                            onClick={() =>
+                          <select
+                            className={`review-decision ${state}`}
+                            aria-label={`Decision for ${a.title}`}
+                            value={state}
+                            disabled={locked}
+                            onChange={(e) =>
                               setDecisions((d) => ({
                                 ...d,
-                                [a.id]:
-                                  state === "rejected"
-                                    ? "approved"
-                                    : "rejected",
+                                [a.id]: e.target.value as Decision,
                               }))
                             }
                           >
-                            {state === "rejected" ? (
-                              <X size={14} />
-                            ) : (
-                              <Check size={14} />
-                            )}{" "}
-                            {state === "rejected" ? "Excluded" : "Include"}
-                          </button>
+                            <option value="pending">Pending</option>
+                            <option value="approved">Approved</option>
+                            <option value="rejected">Rejected</option>
+                          </select>
                         ) : (
                           <Badge
                             tone={a.status === "approved" ? "green" : "neutral"}
@@ -340,7 +387,7 @@ export function Review({
                           aria-label={`Edit ${a.title}`}
                           value={edits[a.id] ?? a.body}
                           maxLength={6000}
-                          disabled={busy}
+                          disabled={locked}
                           rows={
                             a.kind === "message"
                               ? 5
@@ -372,12 +419,12 @@ export function Review({
                                 }
                                 disabled={
                                   !data.capabilities.ai ||
-                                  !!rewriting ||
+                                  locked ||
                                   a.status !== "pending"
                                 }
                                 onClick={() => rewrite(a, value)}
                               >
-                                {rewriting === value ? (
+                                {rewriting === `${a.id}:${value}` ? (
                                   <LoaderCircle size={12} className="spin" />
                                 ) : (
                                   <SlidersHorizontal size={12} />
@@ -422,7 +469,7 @@ export function Review({
                             aria-label={`Due date for ${a.title}`}
                             type="date"
                             value={dates[a.id] ?? a.dueDate ?? ""}
-                            disabled={busy}
+                            disabled={locked}
                             onChange={(e) =>
                               setDates((v) => ({
                                 ...v,
@@ -446,26 +493,121 @@ export function Review({
                         </summary>
                         <p>“{a.sourceQuote}”</p>
                       </details>
+                      <details className="source-evidence review-history">
+                        <summary>
+                          Original proposal & review history
+                          <ChevronDown size={12} />
+                        </summary>
+                        {a.originalAvailable === false ? (
+                          <p>
+                            The original wording predates review history
+                            tracking and cannot be recovered. The saved decision
+                            is preserved below.
+                          </p>
+                        ) : (
+                          <div className="history-entry">
+                            <strong>{a.original?.title ?? a.title}</strong>
+                            <p>{a.original?.body ?? a.body}</p>
+                            {(a.original ? a.original.dueDate : a.dueDate) && (
+                              <small>
+                                Original due date:{" "}
+                                {shortDate(
+                                  a.original ? a.original.dueDate! : a.dueDate!,
+                                )}
+                              </small>
+                            )}
+                          </div>
+                        )}
+                        {data.reviewHistory
+                          .filter(
+                            (h) =>
+                              h.packageId === pkg.id && h.actionId === a.id,
+                          )
+                          .map((h) => (
+                            <div className="history-entry" key={h.id}>
+                              <strong>
+                                {h.decision === "approved"
+                                  ? "Approved"
+                                  : "Rejected"}{" "}
+                                · {new Date(h.reviewedAt).toLocaleString()}
+                              </strong>
+                              <small>{h.actor} · shared workspace review</small>
+                              <p>{h.edited.body}</p>
+                              {h.edited.dueDate && (
+                                <small>
+                                  Saved due date: {shortDate(h.edited.dueDate)}
+                                </small>
+                              )}
+                            </div>
+                          ))}
+                        {a.status === "pending" && (
+                          <p>
+                            No saved decision yet. Your current edits and
+                            choices are saved only when you confirm a decision.
+                          </p>
+                        )}
+                      </details>
                     </article>
                   );
                 })}
               </div>
+              {pending.length > 0 && (
+                <div className="review-effects-preview" aria-live="polite">
+                  <strong>When you confirm</strong>
+                  {chosen.length > 0 ? (
+                    <ul>
+                      {chosen.map((decision) => {
+                        const action = pending.find(
+                          (a) => a.id === decision.id,
+                        )!;
+                        return (
+                          <li key={action.id}>
+                            {decision.status === "approved"
+                              ? reviewEffect(action, !!pkg.propertyId)
+                              : "Reject this proposal without applying it"}
+                            : <b>{action.title}</b>
+                            {decision.status === "approved" &&
+                              action.kind === "task" && (
+                                <span>
+                                  {" "}
+                                  ·{" "}
+                                  {decision.dueDate
+                                    ? `Due ${shortDate(decision.dueDate)}`
+                                    : "No due date"}
+                                </span>
+                              )}
+                          </li>
+                        );
+                      })}
+                      {completedReviewTasks.map((task) => (
+                        <li key={`review-task-${task.id}`}>
+                          Complete the linked review reminder:{" "}
+                          <b>{task.title}</b>. Client follow-up and unresolved
+                          commitments remain open until separately completed.
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>
+                      No actions selected. Undecided proposals remain pending.
+                    </p>
+                  )}
+                  <p>
+                    {approved.length} approved · {rejected.length} rejected ·{" "}
+                    {remaining} remain pending.
+                  </p>
+                  <p>
+                    Decisions and edits are recorded in the review history. No
+                    external messages are sent and no external CRM is updated.
+                  </p>
+                </div>
+              )}
               <div className="review-commit">
                 <div>
                   <strong>
                     {pending.length
-                      ? pending.filter((a) => decisions[a.id] !== "rejected")
-                          .length
-                      : pkg.actions.filter((a) => a.status === "approved")
-                          .length}{" "}
-                    {(pending.length
-                      ? pending.filter((a) => decisions[a.id] !== "rejected")
-                          .length
-                      : pkg.actions.filter((a) => a.status === "approved")
-                          .length) === 1
-                      ? "action"
-                      : "actions"}{" "}
-                    {pending.length ? "selected" : "approved"}
+                      ? `${chosen.length} ${chosen.length === 1 ? "decision" : "decisions"} to save`
+                      : `${pkg.actions.filter((a) => a.status === "approved").length} approved`}
                   </strong>
                   <small>
                     {pending.length
@@ -477,12 +619,9 @@ export function Review({
                   <button
                     className="button primary"
                     disabled={
-                      busy ||
-                      pending.some(
-                        (a) =>
-                          decisions[a.id] !== "rejected" &&
-                          !(edits[a.id] ?? a.body).trim(),
-                      )
+                      locked ||
+                      !chosen.length ||
+                      chosen.some((a) => !a.body.trim())
                     }
                     onClick={save}
                   >

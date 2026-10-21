@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ApiError, limitAI, protectedRoute, readJson } from "@/lib/auth";
 import { rewriteMessage } from "@/lib/ai";
+import { buildAIContext } from "@/lib/ai-context";
 import { getWorkspace } from "@/lib/repository";
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -41,33 +42,23 @@ export async function POST(
           "This draft has already been reviewed.",
           "already_reviewed",
         );
-      const agent = workspace.agents.find(
-        (item) => item.id === workPackage.agentId,
-      );
-      const client = workspace.clients.find(
-        (item) => item.id === workPackage.clientId,
-      );
       const conversation = workspace.conversations.find(
         (item) => item.id === workPackage.conversationId,
       );
-      if (!agent || !client || !conversation)
+      if (!conversation)
         throw new ApiError(
           404,
           "The source conversation is unavailable.",
           "not_found",
         );
-      const property =
-        workspace.properties.find(
-          (item) => item.id === workPackage.propertyId,
-        ) ?? null;
       return rewriteMessage(
-        {
-          agent,
-          client,
-          property,
-          transcript: conversation.transcript,
-          approvedMessages: [],
-        },
+        buildAIContext(
+          workspace,
+          workPackage.agentId,
+          workPackage.clientId,
+          workPackage.propertyId,
+          conversation.transcript,
+        ),
         workPackage,
         input.text ?? action.body,
         input.instruction,

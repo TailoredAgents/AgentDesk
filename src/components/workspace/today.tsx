@@ -11,6 +11,7 @@ import {
   Compass,
 } from "lucide-react";
 import type { WorkspaceData, Task, Agent } from "@/lib/types";
+import { orderedTasks } from "@/lib/workspace-insights";
 import {
   AssistantIcon,
   Badge,
@@ -35,6 +36,9 @@ export function Today({
   onTask,
   onView,
   onWorkforce,
+  onFollowUp,
+  onRefresh,
+  refreshing,
 }: {
   data: WorkspaceData;
   agent: Agent;
@@ -45,25 +49,43 @@ export function Today({
   onTask: (task: Task) => void;
   onView: (view: View) => void;
   onWorkforce: () => void;
+  onFollowUp: (id: string) => void;
+  onRefresh: () => void;
+  refreshing: boolean;
 }) {
   const [taskFilter, setTaskFilter] = useState("open");
   const [appointmentId, setAppointmentId] = useState<string | null>(null);
   const selectedAppointment = data.appointments.find(
     (a) => a.id === appointmentId,
   );
-  const tasks = data.tasks.filter((t) => t.agentId === agent.id);
+  const tasks = orderedTasks(
+    data.tasks.filter((t) => t.agentId === agent.id),
+    data.workspace.referenceDate,
+  );
   const open = tasks.filter((t) => t.status === "open");
   const packages = data.packages.filter(
     (p) => p.agentId === agent.id && p.status === "pending",
   );
-  const appointments = data.appointments.filter(
-    (a) =>
-      a.agentId === agent.id &&
-      a.startsAt.slice(0, 10) === data.workspace.referenceDate,
-  );
+  const appointments = data.appointments
+    .filter(
+      (a) =>
+        a.agentId === agent.id &&
+        a.startsAt.slice(0, 10) >= data.workspace.referenceDate,
+    )
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
+    .slice(0, 3);
   const listings = data.properties.filter((p) => p.agentId === agent.id);
-  const primary =
-    packages.find((p) => p.propertyId === "willow") || packages[0];
+  const recommendations = data.recommendations.filter(
+    (item) => item.agentId === agent.id,
+  );
+  const next = recommendations[0];
+  const primary = packages.find((p) => p.id === next?.packageId) || packages[0];
+  const nextClient = data.clients.find(
+    (client) => client.id === next?.clientId,
+  );
+  const heroProperty =
+    listings.find((property) => property.id === next?.propertyId) ||
+    listings[0];
   return (
     <>
       <div className="page-heading">
@@ -97,48 +119,57 @@ export function Today({
             <Badge tone="glass">Daily Coordinator</Badge>
           </div>
           <h2>
-            {packages.length
-              ? "Good relationships start with the little things."
-              : "A little space to focus on what’s next."}
+            {next
+              ? "A thoughtful follow-up can move today forward."
+              : packages.length
+                ? "Good relationships start with the little things."
+                : "A little space to focus on what’s next."}
           </h2>
           <p>
-            {packages.length ? (
+            {next ? (
               <>
-                Your{" "}
-                {primary?.clientId === "sarah"
-                  ? "follow-up for Sarah"
-                  : "client follow-up"}{" "}
-                is ready for a look. You have{" "}
-                <strong>{open.length} open priorities</strong> and{" "}
-                <strong>{appointments.length} appointments</strong> on the
-                calendar. Let’s keep things moving.
+                <strong>{nextClient?.name}</strong>: {next.reason}{" "}
+                {appointments[0]
+                  ? `Coming up: ${appointments[0].title} (${appointments[0].status}).`
+                  : "No upcoming appointment is recorded."}
               </>
             ) : (
               <>
-                Your review queue is clear. You have{" "}
-                <strong>{open.length} open priorities</strong> and{" "}
+                {packages.length
+                  ? `${packages.length} packages await your decisions.`
+                  : "Your review queue is clear."}{" "}
+                You have <strong>{open.length} open priorities</strong> and{" "}
                 <strong>{appointments.length} appointments</strong> ahead. Your
                 approved work is saved and ready.
               </>
             )}
           </p>
           <div className="briefing-bottom">
-            <button onClick={() => onReview(primary?.id)}>
-              {packages.length
-                ? "Let’s review your work"
-                : "Open your review workspace"}
+            <button
+              onClick={() =>
+                next ? onFollowUp(next.id) : onReview(primary?.id)
+              }
+            >
+              {next
+                ? "Open your next follow-up"
+                : packages.length
+                  ? "Let’s review your work"
+                  : "Open your review workspace"}
               <ArrowRight size={17} />
             </button>
             <span>
               <span className="status-dot" />
-              Prepared from your workspace
+              Records evaluated for {shortDate(data.workspace.referenceDate)}
             </span>
           </div>
         </div>
         <div className="briefing-photo">
           <img
-            src="/images/willow.jpg"
-            alt="Contemporary home with warm wood accents and a landscaped garden"
+            src={heroProperty?.image || "/images/cedar.jpg"}
+            alt={
+              heroProperty?.description ||
+              "A home in the fictional sample workspace"
+            }
           />
           <div className="photo-caption">
             <span>THE NEXT CHAPTER STARTS HERE</span>
@@ -148,6 +179,56 @@ export function Today({
       </section>
       <div className="today-grid">
         <div className="today-primary">
+          <section className="priorities-section">
+            <SectionTitle
+              title="Relationships that need a little attention"
+              aside={
+                <TextLink onClick={onRefresh}>
+                  {refreshing ? "Preparing…" : "Refresh & prepare"}
+                </TextLink>
+              }
+            />
+            <p className="small-text muted">
+              Relationship Assistant · evaluated from saved records on refresh.
+              No background monitoring.
+            </p>
+            {recommendations.map((item) => (
+              <button
+                key={item.id}
+                className="review-priority"
+                onClick={() => onFollowUp(item.id)}
+              >
+                <AssistantIcon index={2} />
+                <span className="priority-body">
+                  <span className="inline-label">
+                    {item.urgency} ·{" "}
+                    {item.status === "ready_for_review"
+                      ? "Draft ready for review"
+                      : item.status === "approved_draft"
+                        ? "Approved draft · follow-up still open"
+                        : item.status === "reviewed"
+                          ? "Review recorded · follow-up still open"
+                          : "Context ready"}
+                  </span>
+                  <strong>
+                    {
+                      data.clients.find((client) => client.id === item.clientId)
+                        ?.name
+                    }{" "}
+                    — {item.title}
+                  </strong>
+                  <small>{item.reason}</small>
+                </span>
+                <ArrowUpRight size={18} />
+              </button>
+            ))}
+            {!recommendations.length && (
+              <Empty
+                title="No evidenced follow-up to flag"
+                description="No open commitment or relevant task calls for attention in the available records. This does not establish that every client has been contacted."
+              />
+            )}
+          </section>
           <section className="priorities-section">
             <SectionTitle
               title="Your next best moves"
@@ -197,7 +278,6 @@ export function Today({
             <div className="task-list">
               {tasks
                 .filter((t) => t.status === taskFilter)
-                .slice(0, 4)
                 .map((t) => (
                   <TaskRow
                     key={t.id}
@@ -233,64 +313,61 @@ export function Today({
               }
             />
             <div className="preview-properties">
-              {[
-                ...listings,
-                ...data.properties.filter((p) => p.agentId !== agent.id),
-              ]
-                .slice(0, 2)
-                .map((p) => (
-                  <button
-                    className="property-preview"
-                    key={p.id}
-                    onClick={() => onProperty(p.id)}
-                  >
-                    <div className="preview-image">
-                      <img src={p.image} alt={p.description} />
-                      <Badge tone="white">{p.stage}</Badge>
-                      <span className="round-arrow">
-                        <ArrowUpRight size={17} />
-                      </span>
-                    </div>
-                    <div className="preview-details">
-                      <h3>{p.address}</h3>
-                      <p>
-                        {p.city} ·{" "}
+              {listings.slice(0, 2).map((p) => (
+                <button
+                  className="property-preview"
+                  key={p.id}
+                  onClick={() => onProperty(p.id)}
+                >
+                  <div className="preview-image">
+                    <img src={p.image} alt={p.description} />
+                    <Badge tone="white">{p.stage}</Badge>
+                    <span className="round-arrow">
+                      <ArrowUpRight size={17} />
+                    </span>
+                  </div>
+                  <div className="preview-details">
+                    <h3>{p.address}</h3>
+                    <p>
+                      {p.city} ·{" "}
+                      {
+                        data.agents
+                          .find((a) => a.id === p.agentId)
+                          ?.name.split(" ")[0]
+                      }
+                    </p>
+                    <div className="property-progress-label">
+                      <span>
                         {
-                          data.agents
-                            .find((a) => a.id === p.agentId)
-                            ?.name.split(" ")[0]
-                        }
-                      </p>
-                      <div className="property-progress-label">
-                        <span>
-                          {
-                            data.tasks.filter(
-                              (t) =>
-                                t.propertyId === p.id && t.status === "done",
-                            ).length
-                          }{" "}
-                          of{" "}
-                          {
-                            data.tasks.filter((t) => t.propertyId === p.id)
-                              .length
-                          }{" "}
-                          tasks complete
-                        </span>
-                        <span>{money(p.price)}</span>
-                      </div>
-                      <Progress
-                        done={
                           data.tasks.filter(
                             (t) => t.propertyId === p.id && t.status === "done",
                           ).length
-                        }
-                        total={
-                          data.tasks.filter((t) => t.propertyId === p.id).length
-                        }
-                      />
+                        }{" "}
+                        of{" "}
+                        {data.tasks.filter((t) => t.propertyId === p.id).length}{" "}
+                        tasks complete
+                      </span>
+                      <span>{money(p.price)}</span>
                     </div>
-                  </button>
-                ))}
+                    <Progress
+                      done={
+                        data.tasks.filter(
+                          (t) => t.propertyId === p.id && t.status === "done",
+                        ).length
+                      }
+                      total={
+                        data.tasks.filter((t) => t.propertyId === p.id).length
+                      }
+                    />
+                  </div>
+                </button>
+              ))}
+              {!listings.length && (
+                <Empty
+                  title="No assigned listings"
+                  description="Your buyer follow-ups and commitments are shown above."
+                />
+              )}
             </div>
           </section>
         </div>
@@ -311,6 +388,10 @@ export function Today({
               {appointments.map((a, i) => (
                 <div className="appointment" key={a.id}>
                   <div className="appointment-time">
+                    {a.startsAt.slice(0, 10) !==
+                      data.workspace.referenceDate && (
+                      <span>{shortDate(a.startsAt)}</span>
+                    )}
                     {time(a.startsAt)}
                     <span>{time(a.endsAt)}</span>
                   </div>
@@ -339,7 +420,7 @@ export function Today({
             </div>
             <div className="calendar-footnote">
               <CalendarDays size={14} />
-              Workspace calendar · external sync not connected
+              Eastern time · workspace calendar · external sync not connected
             </div>
           </section>
           <section className="workforce-card">

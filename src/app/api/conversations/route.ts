@@ -1,7 +1,13 @@
 import { z } from "zod";
 import { ApiError, limitAI, protectedRoute, readJson } from "@/lib/auth";
 import { generateWorkPackage } from "@/lib/ai";
-import { createConversationPackage, getWorkspace } from "@/lib/repository";
+import { buildAIContext } from "@/lib/ai-context";
+import { coalesceAIRequest } from "@/lib/ai-requests";
+import {
+  createConversationPackage,
+  findConversationPackageByRequestId,
+  getWorkspace,
+} from "@/lib/repository";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -13,6 +19,7 @@ const inputSchema = z
     title: z.string().trim().min(3).max(160),
     transcript: z.string().trim().min(30).max(40000),
     authorized: z.literal(true),
+    requestId: z.uuid(),
     source: z.enum(["note", "audio"]).default("note"),
   })
   .strict();
@@ -22,47 +29,63 @@ export async function POST(request: Request) {
     request,
     async () => {
       const input = await readJson(request, inputSchema);
-      limitAI();
       const workspace = await getWorkspace();
-      const agent = workspace.agents.find((item) => item.id === input.agentId);
-      const client = workspace.clients.find(
-        (item) => item.id === input.clientId && item.agentId === input.agentId,
+      return coalesceAIRequest(
+        `${workspace.workspace.id}:${input.requestId}`,
+        input,
+        async () => {
+          const existing = await findConversationPackageByRequestId(
+            input.requestId,
+          );
+          if (existing) {
+            if (
+              [
+                "agentId",
+                "clientId",
+                "propertyId",
+                "title",
+                "transcript",
+                "source",
+              ].some(
+                (key) =>
+                  existing.conversation[
+                    key as keyof typeof existing.conversation
+                  ] !== input[key as keyof typeof input],
+              )
+            ) {
+              throw new ApiError(
+                409,
+                "This submission identifier belongs to different content. Start a new submission.",
+                "request_conflict",
+              );
+            }
+            return {
+              packageId: existing.package.id,
+              workspace: await getWorkspace(),
+            };
+          }
+          const context = buildAIContext(
+            workspace,
+            input.agentId,
+            input.clientId,
+            input.propertyId,
+            input.transcript,
+          );
+          limitAI();
+          const generated = await generateWorkPackage(context);
+          const result = await createConversationPackage(
+            {
+              ...input,
+              expectedWorkspaceRevision: workspace.workspace.revision ?? 0,
+            },
+            generated,
+          );
+          return {
+            packageId: result.package.id,
+            workspace: await getWorkspace(),
+          };
+        },
       );
-      const property = input.propertyId
-        ? workspace.properties.find(
-            (item) =>
-              item.id === input.propertyId &&
-              item.agentId === input.agentId &&
-              item.clientId === input.clientId,
-          )
-        : null;
-      if (!agent || !client || (input.propertyId && !property))
-        throw new ApiError(
-          400,
-          "Choose a client and property assigned to this agent.",
-          "invalid_relationship",
-        );
-      const approvedMessages = workspace.packages
-        .filter(
-          (item) => item.agentId === agent.id && item.clientId === client.id,
-        )
-        .flatMap((item) =>
-          item.actions
-            .filter(
-              (action) =>
-                action.kind === "message" && action.status === "approved",
-            )
-            .map((action) => action.body),
-        );
-      const generated = await generateWorkPackage({
-        agent,
-        client,
-        property: property ?? null,
-        transcript: input.transcript,
-        approvedMessages,
-      });
-      const result = await createConversationPackage(input, generated);
-      return { packageId: result.package.id, workspace: await getWorkspace() };
     },
     true,
   );

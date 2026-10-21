@@ -34,7 +34,7 @@ export const workforce = [
     icon: HeartHandshake,
     color: "rose",
     description:
-      "Prepares thoughtful follow-ups in your voice. Every message stays a draft until you approve it.",
+      "Finds evidenced follow-ups and prepares messages in your voice. Approved messages remain saved drafts; nothing is sent.",
   },
   {
     name: "Listing Coordinator",
@@ -221,14 +221,14 @@ export const shortDate = (value: string | null) =>
       ).toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
-        timeZone: "America/Chicago",
+        timeZone: "America/New_York",
       })
     : "No date set";
 export const time = (value: string) =>
   new Date(value).toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
-    timeZone: "America/Chicago",
+    timeZone: "America/New_York",
   });
 export function TextLink({
   children,

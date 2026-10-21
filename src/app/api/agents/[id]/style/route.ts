@@ -17,6 +17,10 @@ export async function PATCH(
             length: z.string().trim().min(1).max(200),
             avoid: z.string().max(1500),
             examples: z.string().max(6000),
+            directness: z.string().max(500).optional(),
+            greeting: z.string().max(500).optional(),
+            signoff: z.string().max(500).optional(),
+            preferredWords: z.string().max(500).optional(),
           })
           .strict(),
       );

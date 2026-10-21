@@ -11,6 +11,7 @@ import {
 import type { WorkspaceData } from "@/lib/types";
 import { Avatar, Badge, Empty, money } from "../ui";
 import { Progress } from "./shared";
+import { orderedTasks } from "@/lib/workspace-insights";
 
 export function Listings({
   data,
@@ -28,7 +29,7 @@ export function Listings({
   const filtered = [...data.properties]
     .sort(
       (a, b) =>
-        Number(b.id === "willow") - Number(a.id === "willow") ||
+        (a.targetDate ?? "9999").localeCompare(b.targetDate ?? "9999") ||
         a.address.localeCompare(b.address),
     )
     .filter(
@@ -82,10 +83,16 @@ export function Listings({
       </div>
       <div className="property-grid">
         {filtered.map((p, i) => {
-          const tasks = data.tasks.filter((t) => t.propertyId === p.id);
+          const tasks = orderedTasks(
+            data.tasks.filter((t) => t.propertyId === p.id),
+            data.workspace.referenceDate,
+          );
           const done = tasks.filter((t) => t.status === "done").length;
           const agent = data.agents.find((a) => a.id === p.agentId)!;
           const next = tasks.find((t) => t.status === "open");
+          const dependency = data.commitments.find(
+            (item) => item.propertyId === p.id && item.status === "open",
+          );
           return (
             <button
               className={`listing-card ${i === 0 ? "featured" : ""}`}
@@ -128,7 +135,13 @@ export function Listings({
                 <Progress done={done} total={tasks.length} />
                 <div className="listing-next">
                   <span className={`mini-dot ${next ? "amber" : ""}`} />
-                  {next ? next.title : "All preparation tasks complete"}
+                  {dependency
+                    ? dependency.title
+                    : next
+                      ? next.title
+                      : tasks.length
+                        ? "Recorded tasks complete"
+                        : "No preparation tasks recorded"}
                   <ChevronRight size={14} />
                 </div>
               </div>

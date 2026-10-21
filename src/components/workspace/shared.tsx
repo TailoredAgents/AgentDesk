@@ -3,6 +3,7 @@
 import { Check } from "lucide-react";
 import type { WorkspaceData, Task } from "@/lib/types";
 import { shortDate } from "../ui";
+import { isOverdue } from "@/lib/workspace-insights";
 
 export function Progress({ done, total }: { done: number; total: number }) {
   return (
@@ -47,7 +48,10 @@ export function TaskRow({
         {task.priority === "high" && task.status !== "done" && (
           <span className="priority-dot" />
         )}
-        <span>{shortDate(task.dueDate)}</span>
+        <span>
+          {isOverdue(task, data.workspace.referenceDate) ? "Overdue · " : ""}
+          {shortDate(task.dueDate)}
+        </span>
       </div>
     </div>
   );
