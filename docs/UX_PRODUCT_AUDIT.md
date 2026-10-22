@@ -3,7 +3,9 @@
 **Audit date:** October 22, 2026
 **Application baseline:** `2b5f34ee04e4e19bf3544830e0f3d829804329d5`
 **Scope:** existing fictional demonstration and separate private-pilot interface.
-**Decision requested:** choose improvements from this report before implementation. **No application redesign, refactor or product-code fix was made during this audit.**
+**Original audit:** no application redesign, refactor or product-code fix was made during the audit itself. The findings and scores below preserve that baseline.
+
+**Corrective pass, October 22:** the requested implementation and desktop/mobile rehearsal are recorded in [UX_CORRECTIVE_PASS.md](UX_CORRECTIVE_PASS.md). UX-01–04 are corrected; the selected Today, Review, follow-up, search, direct navigation and mobile improvements are implemented. UX-06 now has visible stale-proposal warnings; a broader stale-approval policy remains separate work. Pilot findings are explicitly carried forward. See that record for test results and limitations; the original scores are not a new user study or a post-fix rescore.
 
 ## Product judgment
 

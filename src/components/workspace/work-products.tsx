@@ -65,7 +65,9 @@ export function WorkProducts({
   context,
   filter = {},
   pendingOnly = false,
-  title = "Work products",
+  title = "Documents",
+  open,
+  onClose,
 }: {
   data: WorkspaceData;
   onUpdate: (data: WorkspaceData) => void;
@@ -74,9 +76,15 @@ export function WorkProducts({
   filter?: ProductFilter;
   pendingOnly?: boolean;
   title?: string;
+  open?: { productId: string; versionId?: string };
+  onClose?: () => void;
 }) {
-  const [selected, setSelected] = useState<string | null>(null);
-  const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(
+    open?.productId ?? null,
+  );
+  const [selectedVersion, setSelectedVersion] = useState<string | null>(
+    open?.versionId ?? null,
+  );
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
   const attempt = useRef<{ key: string; id: string } | null>(null);
@@ -136,7 +144,7 @@ export function WorkProducts({
       notify(
         copyVersionId
           ? "A new draft version is ready to edit. Earlier versions are unchanged."
-          : "Work product prepared for your review. Nothing has been delivered.",
+          : "Document prepared for your review. Nothing has been delivered.",
       );
     } catch (error) {
       notify((error as Error).message, "error");
@@ -148,106 +156,111 @@ export function WorkProducts({
   if (!context && !products.length && !selectedProduct) return null;
   return (
     <section className="work-products-section">
-      <SectionTitle
-        title={title}
-        aside={
-          context ? (
-            <button
-              className="text-link"
-              disabled={busy || !data.capabilities.ai}
-              title={
-                !data.capabilities.ai
-                  ? "Live AI is not configured; open a saved sample below."
-                  : undefined
-              }
-              onClick={() => generate()}
-            >
-              {busy ? (
-                <LoaderCircle className="spin" size={14} />
-              ) : (
-                <Plus size={14} />
-              )}
-              {context.kind === "seller_preparation"
-                ? "Prepare seller package"
-                : "Prepare briefing"}
-            </button>
-          ) : undefined
-        }
-      />
-      {products.map((product) => {
-        const latest = newest(product);
-        const pending = [...product.versions]
-          .sort((a, b) => b.version - a.version)
-          .find((version) => version.status === "pending");
-        const display = pending || latest;
-        return (
-          <button
-            key={product.id}
-            className="work-product-row"
-            onClick={() => {
-              setSelected(product.id);
-              setSelectedVersion(display.id);
-            }}
-          >
-            <span className="work-product-icon">
-              <FileText size={20} />
-            </span>
-            <span>
-              <strong>{display.content.title}</strong>
-              <small>
-                {kindName(product.kind)} · Version {display.version} ·{" "}
-                {data.clients.find((client) => client.id === product.clientId)
-                  ?.name ||
-                  data.agents.find((agent) => agent.id === product.agentId)
-                    ?.name}
-              </small>
-              {situationImpacts(data).some(
-                (i) => i.versionId === display.id,
-              ) && (
-                <small className="intelligence-warning">
-                  Contains information to review after a change
-                </small>
-              )}
-              {display.origin === "sample" && (
-                <small>Saved sample output</small>
-              )}
-              {product.versions.length > 1 && (
-                <small>
-                  {product.versions.length} saved versions ·{" "}
-                  {
-                    product.versions.filter(
-                      (version) => version.status === "pending",
-                    ).length
-                  }{" "}
-                  awaiting review
-                </small>
-              )}
-            </span>
-            <Badge
-              tone={
-                display.status === "approved"
-                  ? "green"
-                  : display.status === "pending"
-                    ? "blue"
-                    : "neutral"
-              }
-            >
-              {display.status === "approved"
-                ? "PDF ready"
-                : display.status === "pending"
-                  ? "Needs review"
-                  : "Rejected"}
-            </Badge>
-            <ChevronRight size={15} />
-          </button>
-        );
-      })}
-      {!products.length && context && (
-        <p className="work-product-note">
-          {data.capabilities.ai
-            ? "Prepare a document from the linked records, then review its facts and recommendations before finalizing."
-            : "Live generation is unavailable. Saved sample documents in the Willow Lane listing can be edited, approved, and downloaded without an API key."}
-        </p>
+      {!open && (
+        <>
+          <SectionTitle
+            title={title}
+            aside={
+              context ? (
+                <button
+                  className="text-link"
+                  disabled={busy || !data.capabilities.ai}
+                  title={
+                    !data.capabilities.ai
+                      ? "Live AI is not configured; open a saved sample below."
+                      : undefined
+                  }
+                  onClick={() => generate()}
+                >
+                  {busy ? (
+                    <LoaderCircle className="spin" size={14} />
+                  ) : (
+                    <Plus size={14} />
+                  )}
+                  {context.kind === "seller_preparation"
+                    ? "Prepare seller package"
+                    : "Prepare briefing"}
+                </button>
+              ) : undefined
+            }
+          />
+          {products.map((product) => {
+            const latest = newest(product);
+            const pending = [...product.versions]
+              .sort((a, b) => b.version - a.version)
+              .find((version) => version.status === "pending");
+            const display = pending || latest;
+            return (
+              <button
+                key={product.id}
+                className="work-product-row"
+                onClick={() => {
+                  setSelected(product.id);
+                  setSelectedVersion(display.id);
+                }}
+              >
+                <span className="work-product-icon">
+                  <FileText size={20} />
+                </span>
+                <span>
+                  <strong>{display.content.title}</strong>
+                  <small>
+                    {kindName(product.kind)} · Version {display.version} ·{" "}
+                    {data.clients.find(
+                      (client) => client.id === product.clientId,
+                    )?.name ||
+                      data.agents.find((agent) => agent.id === product.agentId)
+                        ?.name}
+                  </small>
+                  {situationImpacts(data).some(
+                    (i) => i.versionId === display.id,
+                  ) && (
+                    <small className="intelligence-warning">
+                      Contains information to review after a change
+                    </small>
+                  )}
+                  {display.origin === "sample" && (
+                    <small>Saved sample output</small>
+                  )}
+                  {product.versions.length > 1 && (
+                    <small>
+                      {product.versions.length} saved versions ·{" "}
+                      {
+                        product.versions.filter(
+                          (version) => version.status === "pending",
+                        ).length
+                      }{" "}
+                      awaiting review
+                    </small>
+                  )}
+                </span>
+                <Badge
+                  tone={
+                    display.status === "approved"
+                      ? "green"
+                      : display.status === "pending"
+                        ? "blue"
+                        : "neutral"
+                  }
+                >
+                  {display.status === "approved"
+                    ? "PDF ready"
+                    : display.status === "pending"
+                      ? "Needs review"
+                      : "Rejected"}
+                </Badge>
+                <ChevronRight size={15} />
+              </button>
+            );
+          })}
+          {!products.length && context && (
+            <p className="work-product-note">
+              {data.capabilities.ai
+                ? "Prepare a document from the linked records, then review its facts and recommendations before finalizing."
+                : "Live generation is unavailable. Saved sample documents in the Willow Lane listing can be edited, approved, and downloaded without an API key."}
+            </p>
+          )}
+        </>
       )}
       {selectedProduct && selectedRecord && (
         <WorkProductEditor
@@ -259,6 +272,7 @@ export function WorkProducts({
             if (!busy) {
               setSelected(null);
               setSelectedVersion(null);
+              onClose?.();
             }
           }}
           onVersion={setSelectedVersion}

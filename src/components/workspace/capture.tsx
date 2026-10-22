@@ -15,33 +15,55 @@ import {
   AlertCircle,
 } from "lucide-react";
 import type { WorkspaceData, Agent } from "@/lib/types";
-import { AssistantIcon, AutoTextarea, Modal, workforce } from "../ui";
+import {
+  AssistantIcon,
+  AutoTextarea,
+  Modal,
+  workforce,
+  useDraftGuard,
+} from "../ui";
+import { savedConversationReview } from "./workflow-navigation";
 import { request } from "./client-api";
 import { elapsedLabel, MAX_AUDIO_BYTES } from "./recording-helpers";
 import { useVoiceRecorder } from "./use-voice-recorder";
 
+export type CaptureDraft = {
+  clientId: string;
+  propertyId: string;
+  note: string;
+  mode: "note" | "audio";
+  file: File | null;
+};
 export function Capture({
   data,
   agent,
   onClose,
   onComplete,
+  draft,
+  onDraft,
 }: {
   data: WorkspaceData;
   agent: Agent;
   onClose: () => void;
   onComplete: (id: string, workspace?: WorkspaceData) => void | Promise<void>;
+  draft?: CaptureDraft;
+  onDraft: (draft: CaptureDraft | null) => void;
 }) {
   const clients = data.clients.filter((client) => client.agentId === agent.id);
-  const [clientId, setClientId] = useState(clients[0]?.id || "");
-  const [propertyId, setPropertyId] = useState(
-    data.properties.find(
-      (p) => p.clientId === clients[0]?.id && p.agentId === agent.id,
-    )?.id || "",
+  const [clientId, setClientId] = useState(
+    draft?.clientId || clients[0]?.id || "",
   );
-  const [note, setNote] = useState("");
+  const [propertyId, setPropertyId] = useState(
+    draft?.propertyId ??
+      (data.properties.find(
+        (p) => p.clientId === clients[0]?.id && p.agentId === agent.id,
+      )?.id ||
+        ""),
+  );
+  const [note, setNote] = useState(draft?.note || "");
   const [authorized, setAuthorized] = useState(false);
-  const [mode, setMode] = useState<"note" | "audio">("note");
-  const [file, setFile] = useState<File | null>(null);
+  const [mode, setMode] = useState<"note" | "audio">(draft?.mode || "note");
+  const [file, setFile] = useState<File | null>(draft?.file || null);
   const [preview, setPreview] = useState("");
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState("");
@@ -84,6 +106,19 @@ export function Capture({
   const recorder = useVoiceRecorder(chooseFile, setError);
   const recording = recorder.state !== "idle";
   const locked = busy || recording;
+  const dirty = !!note.trim() || !!file || recording;
+  const guard = useDraftGuard(dirty, !locked ? onClose : undefined);
+  const savedReview = savedConversationReview(
+    data,
+    agent.id,
+    clientId,
+    propertyId,
+  );
+  useEffect(() => {
+    onDraft(
+      note.trim() || file ? { clientId, propertyId, note, mode, file } : null,
+    );
+  }, [clientId, propertyId, note, mode, file, onDraft]);
 
   useEffect(() => {
     setPlaybackError(false);
@@ -147,6 +182,7 @@ export function Capture({
         authorized: true,
         source: mode === "audio" ? "audio" : "note",
       });
+      onDraft(null);
       await onComplete(result.packageId, result.workspace);
     } catch (error) {
       setError(
@@ -158,27 +194,75 @@ export function Capture({
       setBusy(false);
     }
   };
+  const consent = (
+    <>
+      <label className="consent">
+        <input
+          type="checkbox"
+          checked={authorized}
+          disabled={locked}
+          onChange={(event) => setAuthorized(event.target.checked)}
+        />
+        <span>
+          I have the required consent to record and share these notes or audio
+          with OpenAI when I select Prepare my work.
+        </span>
+      </label>
+      <details className="capture-privacy">
+        <summary>How your conversation is handled</summary>
+        <p>
+          The transcript and prepared work are saved in AgentDesk. Audio stays
+          in this browser until you select Prepare my work and is not saved on
+          the server.
+        </p>
+      </details>
+    </>
+  );
   return (
     <Modal
-      title="A conversation. A clearer next step."
-      subtitle="Share the context. Your workforce will take it from here."
+      title="New conversation"
+      subtitle={`${client?.name || "Choose a client"} · You review the prepared work.`}
       onClose={() => {
-        if (!busy) onClose();
+        if (!locked)
+          guard.requestLeave(() => {
+            onDraft(null);
+            onClose();
+          });
       }}
       wide
+      className="capture-modal"
     >
+      {guard.dialog}
       <div className="capture-body">
         {!data.capabilities.ai && (
-          <details className="availability-note">
-            <summary>
-              Live AI is unavailable · saved examples are ready in Review
-            </summary>
+          <div className="availability-note">
             <p>
-              You can write notes and preview audio locally. Transcription and
-              new work preparation become available when your workspace
-              administrator connects AI.
+              Live AI is unavailable.{" "}
+              {savedReview
+                ? "Explore the existing fictional result for this client."
+                : "New work needs AI setup by your administrator."}
             </p>
-          </details>
+            {savedReview && (
+              <button
+                className="button secondary"
+                disabled={locked}
+                onClick={() =>
+                  guard.requestLeave(() => {
+                    onDraft(null);
+                    void onComplete(savedReview.id);
+                  })
+                }
+              >
+                Open saved {client?.name.split(" ")[0]} review
+              </button>
+            )}
+            {savedReview && (
+              <small>
+                Saved fictional output · opening it does not process these
+                notes.
+              </small>
+            )}
+          </div>
         )}
         <div className="capture-selects">
           <label>
@@ -187,15 +271,20 @@ export function Capture({
               value={clientId}
               disabled={locked}
               onChange={(event) => {
-                changed();
-                setClientId(event.target.value);
-                setPropertyId(
-                  data.properties.find(
-                    (p) =>
-                      p.clientId === event.target.value &&
-                      p.agentId === agent.id,
-                  )?.id || "",
-                );
+                const nextClientId = event.target.value;
+                guard.requestLeave(() => {
+                  changed();
+                  setNote("");
+                  chooseFile(null);
+                  setAuthorized(false);
+                  setClientId(nextClientId);
+                  setPropertyId(
+                    data.properties.find(
+                      (p) =>
+                        p.clientId === nextClientId && p.agentId === agent.id,
+                    )?.id || "",
+                  );
+                });
               }}
             >
               {!clients.length && <option value="">No clients assigned</option>}
@@ -249,33 +338,14 @@ export function Capture({
             Audio recording
           </button>
         </div>
-        <label className="consent">
-          <input
-            type="checkbox"
-            checked={authorized}
-            disabled={locked}
-            onChange={(event) => setAuthorized(event.target.checked)}
-          />
-          <span>
-            I have the required consent to record and share these notes or audio
-            with OpenAI when I select Prepare my work.
-          </span>
-        </label>
-        <details className="capture-privacy">
-          <summary>How your conversation is handled</summary>
-          <p>
-            The transcript and prepared work are saved in AgentDesk. Audio stays
-            in this browser until you select Prepare my work and is not saved on
-            the server.
-          </p>
-        </details>
+        {mode === "audio" && consent}
         {mode === "note" ? (
           <>
             <div className="note-label">
               <label htmlFor="conversation-note">
                 What did you talk about?
               </label>
-              {fixture && (
+              {fixture && data.capabilities.ai && (
                 <button
                   className="text-link"
                   disabled={busy}
@@ -301,8 +371,10 @@ export function Capture({
               }}
               maxLength={24000}
             />
+            {consent}
             <span className="char-count">
-              {note.length.toLocaleString()} / 24,000 characters
+              {note.length.toLocaleString()} / 24,000 characters · Draft kept
+              only in this tab until submitted.
             </span>
           </>
         ) : (
@@ -458,6 +530,11 @@ export function Capture({
             <ShieldCheck size={15} />
             You review every action before it’s applied.
           </span>
+          {dirty && !locked && (
+            <button className="text-link" onClick={onClose}>
+              Keep draft & close
+            </button>
+          )}
           <button
             className="button primary"
             disabled={

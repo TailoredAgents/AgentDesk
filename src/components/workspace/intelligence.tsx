@@ -12,6 +12,8 @@ import { situationSampleTranscript } from "@/lib/intelligence-sample";
 import { topicLabels } from "@/lib/intelligence-types";
 import { proposalImpacts, activeSituationImpacts } from "@/lib/intelligence";
 import { Badge, SectionTitle, shortDate } from "../ui";
+import { useWorkspaceNavigation } from "./navigation-context";
+import { impactTarget } from "./workflow-navigation";
 import { request } from "./client-api";
 
 export function ChangePreview({
@@ -27,6 +29,7 @@ export function ChangePreview({
   proposedBody?: string;
   proposedDate?: string | null;
 }) {
+  const navigation = useWorkspaceNavigation();
   const c = action.change;
   if (!c) return null;
   const impacts = proposalImpacts(data, action, pkg);
@@ -122,6 +125,14 @@ export function ChangePreview({
               <strong>{i.title}</strong>
               <br />
               {i.detail}
+              {navigation && impactTarget(data, i) && (
+                <button
+                  className="text-link"
+                  onClick={() => navigation.openTarget(impactTarget(data, i)!)}
+                >
+                  Open {i.kind === "message" ? "message review" : i.kind}
+                </button>
+              )}
             </p>
           ))}
         </details>
@@ -147,6 +158,7 @@ export function IntelligenceExceptions({
   onReview?: (id: string) => void;
   compact?: boolean;
 }) {
+  const navigation = useWorkspaceNavigation();
   const match = (v: {
     agentId: string;
     clientId: string | null;
@@ -214,16 +226,21 @@ export function IntelligenceExceptions({
           open={compact ? undefined : true}
         >
           <summary>Facts & connected work to check</summary>
-          {records.slice(0, 4).map((i) => (
+          {records.map((i) => (
             <div className="intelligence-exception" key={i.id}>
               <strong>{i.title}</strong>
               <p>{i.detail}</p>
-              {onClient && (
+              {(navigation || onClient) && (
                 <button
                   className="text-link"
-                  onClick={() => onClient(i.clientId)}
+                  onClick={() => {
+                    const target = impactTarget(data, i);
+                    if (target && navigation) navigation.openTarget(target);
+                    else onClient?.(i.clientId);
+                  }}
                 >
-                  Open client context <ArrowUpRight size={13} />
+                  Open {i.kind === "message" ? "message review" : i.kind}{" "}
+                  <ArrowUpRight size={13} />
                 </button>
               )}
             </div>
@@ -248,11 +265,6 @@ export function IntelligenceExceptions({
             </div>
           ))}
         </details>
-      )}
-      {records.length > 4 && (
-        <small>
-          Open the client and document history for all affected records.
-        </small>
       )}
     </section>
   );

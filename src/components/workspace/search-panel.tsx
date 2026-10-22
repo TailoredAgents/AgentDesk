@@ -1,8 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUpRight, Inbox, House, Users, Search } from "lucide-react";
+import {
+  ArrowUpRight,
+  Inbox,
+  House,
+  Users,
+  Search,
+  FileText,
+  CheckSquare,
+} from "lucide-react";
 import type { WorkspaceData } from "@/lib/types";
+import { searchableWork } from "./workflow-navigation";
+import { useWorkspaceNavigation } from "./navigation-context";
 import { Empty, Modal } from "../ui";
 
 export function SearchPanel({
@@ -18,6 +28,7 @@ export function SearchPanel({
   onClient: (id: string) => void;
   onReview: (id: string) => void;
 }) {
+  const navigation = useWorkspaceNavigation();
   const [query, setQuery] = useState("");
   const q = query.toLowerCase().trim();
   const properties = data.properties.filter((p) =>
@@ -27,7 +38,13 @@ export function SearchPanel({
   const packages = data.packages.filter((p) =>
     p.title.toLowerCase().includes(q),
   );
-  const count = properties.length + clients.length + packages.length;
+  const { documents, tasks } = searchableWork(data, query);
+  const count =
+    properties.length +
+    clients.length +
+    packages.length +
+    documents.length +
+    tasks.length;
   const highlight = (text: string) => {
     if (!q) return text;
     const start = text.toLowerCase().indexOf(q);
@@ -52,7 +69,7 @@ export function SearchPanel({
           <Search size={20} />
           <input
             data-search-input
-            placeholder="Search properties, people, or prepared work…"
+            placeholder="Search clients, properties, documents, tasks…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             aria-label="Search workspace"
@@ -110,7 +127,58 @@ export function SearchPanel({
             ))}
           </>
         )}
-        {!properties.length && !clients.length && !packages.length && (
+        {!!documents.length && (
+          <>
+            <h3 className="small-heading">DOCUMENTS</h3>
+            {documents
+              .slice(0, q ? undefined : 3)
+              .map(({ product, version }) => (
+                <button
+                  key={product.id}
+                  onClick={() =>
+                    navigation?.openTarget({
+                      kind: "document",
+                      id: product.id,
+                      versionId: version.id,
+                    })
+                  }
+                >
+                  <FileText size={17} />
+                  <span>
+                    {highlight(version.content.title)}
+                    <small>
+                      Version {version.version} · {version.status}
+                    </small>
+                  </span>
+                  <ArrowUpRight size={14} />
+                </button>
+              ))}
+          </>
+        )}
+        {!!tasks.length && (
+          <>
+            <h3 className="small-heading">TASKS</h3>
+            {tasks.slice(0, q ? undefined : 3).map((task) => (
+              <button
+                key={task.id}
+                onClick={() =>
+                  navigation?.openTarget({ kind: "task", id: task.id })
+                }
+              >
+                <CheckSquare size={17} />
+                <span>
+                  {highlight(task.title)}
+                  <small>
+                    {data.clients.find((c) => c.id === task.clientId)?.name} ·{" "}
+                    {task.status === "done" ? "Completed" : "To do"}
+                  </small>
+                </span>
+                <ArrowUpRight size={14} />
+              </button>
+            ))}
+          </>
+        )}
+        {!count && (
           <Empty
             kind="search"
             title={
@@ -118,7 +186,7 @@ export function SearchPanel({
                 ? `No results for “${query.trim()}”`
                 : "Your workspace is ready to grow"
             }
-            description="Try a client name, property address, or prepared-work title."
+            description="Try a client name, property address, document title, or task."
           />
         )}
       </div>

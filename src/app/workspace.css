@@ -1689,3 +1689,214 @@ mark {
   overflow-y: hidden;
   resize: none;
 }
+.review-group-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 20px 0 4px;
+  font-size: 16px;
+  color: #263b52;
+}
+.review-workspace:not(.show-source) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.review-workspace:not(.show-source) .source-panel {
+  display: none;
+}
+.review-summary .source-toggle {
+  display: inline-flex;
+}
+.review-group-heading span {
+  font-size: 12px;
+  font-weight: 400;
+  color: #64748b;
+}
+.review-group-heading:first-child {
+  margin-top: 0;
+}
+.review-commit small {
+  color: #526579;
+}
+.review-effects-preview {
+  scroll-margin-top: 90px;
+}
+.review-outdated {
+  border: 1px solid #eadfc8;
+  background: #fffbf3;
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  line-height: 1.7;
+}
+.secondary-priorities {
+  border-block: 1px solid #e7ecf2;
+  padding: 15px 0;
+}
+.secondary-priorities > summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #41546a;
+}
+.secondary-priorities > summary span {
+  margin-left: 8px;
+  color: #667b90;
+}
+.secondary-priorities[open] > summary {
+  margin-bottom: 18px;
+}
+.task-scope-toggle {
+  margin: 0 0 12px;
+}
+.appointment-warning {
+  padding: 18px;
+  border: 1px solid #eadfc8;
+  background: #fffbf3;
+  border-radius: 10px;
+  line-height: 1.65;
+}
+.appointment-warning h3 {
+  font-size: 17px;
+  margin-bottom: 8px;
+}
+.appointment-warning h4 {
+  margin-top: 16px;
+}
+.appointment-warning details {
+  margin-top: 16px;
+}
+.appointment-warning summary {
+  cursor: pointer;
+}
+.capture-body .availability-note {
+  display: grid;
+  gap: 8px;
+}
+.capture-body .availability-note .button {
+  justify-self: start;
+}
+.capture-body .availability-note small {
+  line-height: 1.5;
+}
+.follow-up-completion .saved-note strong {
+  display: block;
+}
+@media (max-width: 600px) {
+  .review-page-heading {
+    margin-bottom: 14px;
+    gap: 10px;
+  }
+  .review-page-heading .eyebrow {
+    display: none;
+  }
+  .review-page-heading h1 {
+    font-size: 26px;
+  }
+  .review-page-heading p {
+    font-size: 12px;
+    margin-top: 5px;
+  }
+  .review-page-heading > .button {
+    padding: 10px 12px;
+    min-height: 44px;
+  }
+  .review-toolbar {
+    margin-bottom: 12px;
+  }
+  .package-selector {
+    margin-bottom: 12px;
+  }
+  .package-selector > button {
+    padding: 9px 12px;
+  }
+  .actions-panel .actions-intro {
+    display: none;
+  }
+  .actions-panel .actions-help {
+    margin-top: 0;
+  }
+  .capture-modal .modal-header {
+    padding: 15px 18px;
+  }
+  .capture-modal .capture-body {
+    padding: 16px;
+  }
+  .capture-modal .capture-selects {
+    gap: 10px;
+  }
+  .capture-modal .capture-selects select {
+    min-height: 44px;
+    font-size: 16px;
+    padding-block: 8px;
+  }
+  .capture-modal .capture-tabs {
+    margin-block: 12px;
+  }
+  .capture-modal .capture-textarea {
+    min-height: 140px;
+    font-size: 16px;
+  }
+  .capture-modal .availability-note {
+    padding: 12px;
+    margin-bottom: 14px;
+  }
+  .capture-modal .availability-note p {
+    margin: 0;
+  }
+  .capture-modal .modal-footer {
+    gap: 10px;
+    padding-block: 12px;
+  }
+  .capture-modal .modal-footer > span {
+    display: none;
+  }
+  .capture-modal .modal-footer .prepare-help {
+    margin: 0;
+    font-size: 12px;
+  }
+  .capture-modal .modal-footer .button {
+    min-height: 44px;
+  }
+  .review-commit {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    padding: 12px 0 max(12px, env(safe-area-inset-bottom));
+  }
+  .review-commit > div {
+    grid-column: 1 / -1;
+  }
+  .review-commit strong {
+    font-size: 13px;
+  }
+  .review-commit small {
+    font-size: 11px;
+    line-height: 1.6;
+  }
+  .review-commit .button {
+    min-height: 44px;
+  }
+  .review-summary {
+    padding: 12px;
+    margin-bottom: 16px;
+  }
+  .actions-intro {
+    margin-bottom: 8px;
+  }
+  .actions-intro .eyebrow {
+    display: none;
+  }
+  .actions-intro h2 {
+    font-size: 19px;
+  }
+  .review-decision {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .review-group-heading {
+    font-size: 15px;
+  }
+  .review-group-heading span {
+    white-space: nowrap;
+  }
+}

@@ -330,7 +330,7 @@ export function SectionNav({
   );
 }
 
-export function useDraftGuard(dirty: boolean) {
+export function useDraftGuard(dirty: boolean, keepForLater?: () => void) {
   const [leave, setLeave] = useState<(() => void) | null>(null);
   useEffect(() => {
     if (!dirty) return;
@@ -353,10 +353,22 @@ export function useDraftGuard(dirty: boolean) {
       >
         <div className="draft-guard">
           <p>
-            Return to the draft to save your work, or discard these edits and
-            continue.
+            {keepForLater
+              ? "Keep this draft in the current tab and return later, continue editing, or explicitly discard it."
+              : "Return to the draft to save your work, or discard these edits and continue."}
           </p>
           <div className="product-actions">
+            {keepForLater && (
+              <button
+                className="button secondary"
+                onClick={() => {
+                  setLeave(null);
+                  keepForLater();
+                }}
+              >
+                Keep draft & close
+              </button>
+            )}
             <button
               className="button secondary danger"
               onClick={() => {

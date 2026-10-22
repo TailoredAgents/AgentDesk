@@ -1,4 +1,5 @@
 "use client";
+import { useWorkspaceNavigation } from "./navigation-context";
 import { IntelligenceExceptions } from "./intelligence";
 
 import {
@@ -33,6 +34,7 @@ export function Team({
   onClient: (id: string) => void;
   onSettings: () => void;
 }) {
+  const navigation = useWorkspaceNavigation();
   const open = data.tasks.filter((t) => t.status === "open");
   const completed = data.tasks.filter((t) => t.status === "done");
   const pending = data.packages.filter((p) => p.status === "pending");
@@ -88,7 +90,7 @@ export function Team({
           <div className="team-metrics">
             <div>
               <strong>{pending.length}</strong>
-              <span>Packages to review</span>
+              <span>Reviews waiting</span>
             </div>
             <div>
               <strong>
@@ -114,7 +116,7 @@ export function Team({
             <p>
               {completed.length} tasks complete · {pendingDocuments.length}{" "}
               documents in review · {insight.liveUsers} agents with live AI
-              packages · {insight.livePackages.length} live AI packages.
+              reviews · {insight.livePackages.length} live AI reviews.
             </p>
             <p>
               Saved samples are excluded from live usage. Document counts do not
@@ -158,7 +160,7 @@ export function Team({
                 <div className="record-summary">
                   <Badge tone={pending.length ? "blue" : "green"}>
                     {pending.length
-                      ? `${pending.length} ${pending.length === 1 ? "package" : "packages"} in review`
+                      ? `${pending.length} ${pending.length === 1 ? "review" : "reviews"} waiting`
                       : "Reviews up to date"}
                   </Badge>
                   <Badge tone="amber">
@@ -182,7 +184,9 @@ export function Team({
                   {followUps.length > 0 && (
                     <button
                       className="text-link"
-                      onClick={() => onClient(followUps[0].clientId)}
+                      onClick={() =>
+                        navigation?.openFollowUps(followUps[0].agentId)
+                      }
                     >
                       {followUps.length}{" "}
                       {followUps.length === 1 ? "follow-up" : "follow-ups"}{" "}
@@ -214,7 +218,7 @@ export function Team({
                       </dd>
                     </div>
                     <div>
-                      <dt>Prepared packages</dt>
+                      <dt>Prepared reviews</dt>
                       <dd>
                         {packages.filter((p) => p.origin === "openai").length}{" "}
                         live ·{" "}
@@ -294,7 +298,9 @@ export function Team({
                       {followUps.length ? (
                         <button
                           className="review-table-link"
-                          onClick={() => onClient(followUps[0].clientId)}
+                          onClick={() =>
+                            navigation?.openFollowUps(followUps[0].agentId)
+                          }
                         >
                           {followUps.length} open
                           <ArrowUpRight size={13} />
@@ -331,8 +337,8 @@ export function Team({
                           {pkgs.filter((p) => p.status === "pending").length}{" "}
                           {pkgs.filter((p) => p.status === "pending").length ===
                           1
-                            ? "package"
-                            : "packages"}
+                            ? "review"
+                            : "reviews"}
                           <ArrowUpRight size={13} />
                         </button>
                       ) : (

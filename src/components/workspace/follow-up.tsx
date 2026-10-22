@@ -1,5 +1,8 @@
 "use client";
 
+import { useState } from "react";
+import { MessageActions } from "./message-actions";
+import type { Task, Commitment } from "@/lib/types";
 import { currentContextText, currentFacts } from "@/lib/intelligence";
 import type { FollowUpRecommendation, WorkspaceData } from "@/lib/types";
 import { Badge, Modal, SectionTitle, shortDate, TextLink } from "../ui";
@@ -13,7 +16,13 @@ export function FollowUp({
   onPrepare,
   onClient,
   onProperty,
+  notify,
+  onTask,
+  onCommitment,
 }: {
+  notify: (message: string, tone?: "info" | "success" | "error") => void;
+  onTask: (task: Task) => Promise<void>;
+  onCommitment: (item: Commitment) => Promise<void>;
   item: FollowUpRecommendation;
   data: WorkspaceData;
   busy: boolean;
@@ -23,6 +32,16 @@ export function FollowUp({
   onClient: (id: string) => void;
   onProperty: (id: string) => void;
 }) {
+  const [completing, setCompleting] = useState(false);
+  const complete = async (action: () => Promise<void>) => {
+    if (completing) return;
+    setCompleting(true);
+    try {
+      await action();
+    } finally {
+      setCompleting(false);
+    }
+  };
   const client = data.clients.find((value) => value.id === item.clientId)!;
   const pkg = data.packages.find((value) => value.id === item.packageId);
   const property = data.properties.find(
@@ -33,6 +52,18 @@ export function FollowUp({
       f.agentId === item.agentId &&
       f.clientId === item.clientId &&
       (!f.propertyId || f.propertyId === item.propertyId),
+  );
+  const approvedMessage = pkg?.actions.find(
+    (a) => a.kind === "message" && a.status === "approved",
+  );
+  const usableMessage =
+    approvedMessage &&
+    currentContextText(approvedMessage.body, memory) === approvedMessage.body;
+  const linkedTasks = data.tasks.filter(
+    (t) => item.taskIds.includes(t.id) && t.status === "open",
+  );
+  const linkedCommitments = data.commitments.filter(
+    (c) => item.commitmentIds.includes(c.id) && c.status === "open",
   );
   return (
     <Modal
@@ -79,10 +110,17 @@ export function FollowUp({
               </p>
             )}
             <p>
-              {pkg.actions.find((action) => action.kind === "message")?.body ||
+              {approvedMessage?.body ||
+                pkg.actions.find((action) => action.kind === "message")?.body ||
                 pkg.summary}
             </p>
-            <button className="button primary" onClick={() => onReview(pkg.id)}>
+            {usableMessage && (
+              <MessageActions body={approvedMessage.body} notify={notify} />
+            )}
+            <button
+              className="button secondary"
+              onClick={() => onReview(pkg.id)}
+            >
               {pkg.status === "pending"
                 ? "Review prepared work"
                 : "View review history"}
@@ -104,6 +142,41 @@ export function FollowUp({
               {busy ? "Preparing…" : "Prepare follow-up for review"}
             </button>
           </div>
+        )}
+        {(linkedTasks.length > 0 || linkedCommitments.length > 0) && (
+          <details className="context-disclosure follow-up-completion">
+            <summary>Record follow-up completed</summary>
+            <p>
+              Only mark the work you actually performed. Copying or approving a
+              draft does not complete these items.
+            </p>
+            {linkedTasks.map((task) => (
+              <div className="saved-note" key={task.id}>
+                <strong>{task.title}</strong>
+                <p>{task.detail}</p>
+                <button
+                  className="button secondary small"
+                  disabled={completing}
+                  onClick={() => void complete(() => onTask(task))}
+                >
+                  Mark task completed
+                </button>
+              </div>
+            ))}
+            {linkedCommitments.map((item) => (
+              <div className="saved-note" key={item.id}>
+                <strong>{item.title}</strong>
+                <p>{item.detail}</p>
+                <button
+                  className="button secondary small"
+                  disabled={completing}
+                  onClick={() => void complete(() => onCommitment(item))}
+                >
+                  Mark commitment resolved
+                </button>
+              </div>
+            ))}
+          </details>
         )}
         {item.uncertainties.length > 0 && (
           <div className="clarifications">

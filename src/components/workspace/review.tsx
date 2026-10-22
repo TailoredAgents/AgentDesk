@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
   Plus,
@@ -26,6 +26,11 @@ import { reviewEffect, selectedReviewDecisions } from "./review-helpers";
 import { ChangePreview } from "./intelligence";
 import { WorkProducts } from "./work-products";
 import { MessageActions } from "./message-actions";
+import {
+  reviewSelection,
+  reviewGroups,
+  outdatedReviewActions,
+} from "./workflow-navigation";
 
 export function Review({
   data,
@@ -36,17 +41,19 @@ export function Review({
   onUpdate,
   notify,
   onProperty,
+  onClient,
 }: {
   data: WorkspaceData;
   agent: Agent;
   selected: string | null;
-  setSelected: (id: string) => void;
+  setSelected: (id: string | null) => void;
   onCapture: () => void;
   onUpdate: (data: WorkspaceData) => void;
   notify: (s: string, tone?: "info" | "success" | "error") => void;
   onProperty: (id: string) => void;
+  onClient: (id: string) => void;
 }) {
-  const [tab, setTab] = useState<"pending" | "reviewed">(
+  const [fallbackTab, setTab] = useState<"pending" | "reviewed">(
       data.packages.find((p) => p.id === selected)?.status || "pending",
     ),
     [edits, setEdits] = useState<Record<string, string>>({}),
@@ -69,8 +76,16 @@ export function Review({
   >({});
   const activeDraft = useRef<string | null>(null);
   const agentPackages = data.packages.filter((p) => p.agentId === agent.id);
-  const list = agentPackages.filter((p) => p.status === tab);
-  const pkg = list.find((p) => p.id === selected) || list[0];
+  const { tab, list, pkg } = reviewSelection(
+    data.packages,
+    agent.id,
+    selected,
+    fallbackTab,
+  );
+  const changeTab = (next: "pending" | "reviewed") => {
+    setTab(next);
+    setSelected(agentPackages.find((p) => p.status === next)?.id ?? null);
+  };
   const conversation = data.conversations.find(
     (c) => c.id === pkg?.conversationId,
   );
@@ -88,6 +103,7 @@ export function Review({
         )
       : [];
   const locked = busy || !!rewriting;
+  const outdated = outdatedReviewActions(data, pkg);
   useEffect(() => {
     if (activeDraft.current)
       drafts.current[activeDraft.current] = { edits, dates, decisions };
@@ -98,9 +114,8 @@ export function Review({
     setDates(draft?.dates || {});
   }, [pkg?.id]);
   useEffect(() => {
-    const target = agentPackages.find((p) => p.id === selected);
-    if (target) setTab(target.status);
-  }, [selected, agent.id, data.packages]);
+    if (pkg && pkg.id !== selected) setSelected(pkg.id);
+  }, [pkg?.id, selected, setSelected]);
   useEffect(() => {
     const strip = packageStrip.current;
     const selectedButton = strip?.querySelector<HTMLElement>(
@@ -128,8 +143,8 @@ export function Review({
       setDecisions({});
       notify(
         remaining
-          ? `Decisions saved. ${remaining} ${remaining === 1 ? "action remains" : "actions remain"} pending. No messages were sent.`
-          : "Review saved. Approved work is now in your workspace. No messages were sent.",
+          ? `${client?.name}: decisions saved. ${remaining} ${remaining === 1 ? "action remains" : "actions remain"} pending. No messages were sent.`
+          : `${client?.name}: review saved. Approved work is in the client record. No messages were sent.`,
       );
       setTab(
         updated.packages.find((p) => p.id === pkg.id)?.status || "pending",
@@ -164,13 +179,16 @@ export function Review({
   };
   return (
     <>
-      <div className="page-heading">
+      <div className="page-heading review-page-heading">
         <div>
           <div className="eyebrow">THE HUMAN IN THE LOOP</div>
           <h1>
-            A thoughtful second look<span className="heading-dot">.</span>
+            Ready for your review<span className="heading-dot">.</span>
           </h1>
-          <p>Your workforce prepares. You make it yours.</p>
+          <p>
+            Review the prepared work. Approve what is right; leave the rest
+            pending.
+          </p>
         </div>
         <button
           className="button primary"
@@ -186,7 +204,7 @@ export function Review({
           <button
             className={tab === "pending" ? "active" : ""}
             disabled={locked}
-            onClick={() => setTab("pending")}
+            onClick={() => changeTab("pending")}
           >
             Needs your review{" "}
             <span>
@@ -196,7 +214,7 @@ export function Review({
           <button
             className={tab === "reviewed" ? "active" : ""}
             disabled={locked}
-            onClick={() => setTab("reviewed")}
+            onClick={() => changeTab("reviewed")}
           >
             Reviewed{" "}
             <span>
@@ -220,7 +238,7 @@ export function Review({
           description={
             tab === "pending"
               ? "All prepared work has been reviewed. Add a conversation to get started."
-              : "Approve or reject a work package to see its history."
+              : "Approve or reject prepared work to see its history."
           }
         />
       ) : (
@@ -253,7 +271,14 @@ export function Review({
                   ? `${pending.length} ${pending.length === 1 ? "decision" : "decisions"} remaining`
                   : "Review complete"}
               </strong>
-              <p>{pkg.summary}</p>
+              <p>
+                {property?.address || pkg.title} ·{" "}
+                {pkg.origin === "sample"
+                  ? "Saved fictional output"
+                  : pkg.origin === "human"
+                    ? "Human correction"
+                    : "AI-prepared work"}
+              </p>
             </div>
             <button
               className="button secondary source-toggle"
@@ -265,6 +290,21 @@ export function Review({
                 : "View conversation & evidence"}
             </button>
           </div>
+          {!!outdated.length && (
+            <div className="intelligence-warning review-outdated">
+              <strong>Some work refers to an earlier plan</strong>
+              <p>
+                Review the current client situation before using or approving
+                the marked items. Earlier wording stays in the history.
+              </p>
+              <button
+                className="text-link"
+                onClick={() => onClient(pkg.clientId)}
+              >
+                Review current client context
+              </button>
+            </div>
+          )}
           <div
             className={`review-workspace ${showSource ? "show-source" : ""}`}
           >
@@ -304,6 +344,7 @@ export function Review({
                   <ArrowUpRight size={16} />
                 </button>
               )}
+              <p>{pkg.summary}</p>
               <h3 className="small-heading">Original source</h3>
               <div className="transcript">
                 {conversation?.transcript
@@ -348,10 +389,8 @@ export function Review({
             <section className="actions-panel">
               <div className="actions-intro">
                 <div>
-                  <span className="eyebrow">
-                    ONE CONVERSATION. COORDINATED WORK.
-                  </span>
-                  <h2>Ready for your finishing touch</h2>
+                  <span className="eyebrow">PREPARED FOR YOUR APPROVAL</span>
+                  <h2>{client?.name}’s prepared work</h2>
                 </div>
                 <div className="avatar-stack">
                   {[1, 2, 3].map((i) => (
@@ -360,9 +399,8 @@ export function Review({
                 </div>
               </div>
               <p className="actions-help">
-                Choose Pending, Approved, or Rejected for each proposal. Only
-                your explicit decisions are saved when you confirm. Pending
-                edits stay unsaved until you decide.
+                Choose what to approve or reject, then confirm. Undecided work
+                stays pending; edits to pending work are not saved.
               </p>
               {pending.length > 0 && (
                 <button
@@ -381,226 +419,283 @@ export function Review({
                 </button>
               )}
               <div className="action-cards">
-                {pkg.actions.map((a) => {
-                  const state =
-                    a.status === "pending"
-                      ? decisions[a.id] || "pending"
-                      : a.status;
-                  const role =
-                    a.kind === "message"
-                      ? 2
-                      : a.kind === "task" || a.kind === "listing_update"
-                        ? 3
-                        : 1;
-                  return (
-                    <article
-                      key={a.id}
-                      className={`action-card ${state === "rejected" ? "rejected" : ""}`}
-                    >
-                      <div className="action-card-heading">
-                        <AssistantIcon index={role} small />
-                        <span>{a.kind.replace("_", " ")}</span>
-                        {a.status === "pending" ? (
-                          <select
-                            className={`review-decision ${state}`}
-                            aria-label={`Decision for ${a.title}`}
-                            value={state}
-                            disabled={locked}
-                            onChange={(e) =>
-                              setDecisions((d) => ({
-                                ...d,
-                                [a.id]: e.target.value as Decision,
-                              }))
-                            }
-                          >
-                            <option value="pending">Pending</option>
-                            <option value="approved">Approved</option>
-                            <option value="rejected">Rejected</option>
-                          </select>
-                        ) : (
-                          <Badge
-                            tone={a.status === "approved" ? "green" : "neutral"}
-                          >
-                            {a.status}
-                          </Badge>
-                        )}
-                      </div>
-                      <h3>{a.title}</h3>
-                      <ChangePreview
-                        data={data}
-                        action={a}
-                        pkg={pkg}
-                        proposedBody={edits[a.id] ?? a.body}
-                        proposedDate={dates[a.id] ?? a.dueDate}
-                      />
-                      {a.change && a.status === "pending" && (
-                        <label
-                          className="field-caption"
-                          htmlFor={`edit-${a.id}`}
+                {reviewGroups(pkg.actions).map((group) => (
+                  <Fragment key={group.title}>
+                    <h3 className="review-group-heading">
+                      {group.title}
+                      <span>
+                        {
+                          group.actions.filter((a) => a.status === "pending")
+                            .length
+                        }{" "}
+                        to review
+                      </span>
+                    </h3>
+                    {group.actions.map((a) => {
+                      const state =
+                        a.status === "pending"
+                          ? decisions[a.id] || "pending"
+                          : a.status;
+                      const role =
+                        a.kind === "message"
+                          ? 2
+                          : a.kind === "task" || a.kind === "listing_update"
+                            ? 3
+                            : 1;
+                      return (
+                        <article
+                          key={a.id}
+                          className={`action-card ${state === "rejected" ? "rejected" : ""}`}
                         >
-                          Edit proposed wording
-                        </label>
-                      )}
-                      {a.status === "pending" ? (
-                        <AutoTextarea
-                          id={`edit-${a.id}`}
-                          aria-label={`Edit ${a.title}`}
-                          value={edits[a.id] ?? a.body}
-                          maxLength={6000}
-                          disabled={locked}
-                          rows={
-                            a.kind === "message"
-                              ? 5
-                              : a.kind === "crm_note"
-                                ? 4
-                                : 3
-                          }
-                          onChange={(e) =>
-                            setEdits((v) => ({ ...v, [a.id]: e.target.value }))
-                          }
-                        />
-                      ) : (
-                        <p className="approved-content">{a.body}</p>
-                      )}
-                      {a.kind === "message" && (
-                        <>
-                          <div className="writing-tools">
-                            {[
-                              ["shorter", "Shorter"],
-                              ["natural", "More natural"],
-                              ["professional", "More professional"],
-                            ].map(([value, label]) => (
-                              <button
-                                key={value}
-                                title={
-                                  !data.capabilities.ai
-                                    ? "Configure an OpenAI key to refine with AI"
-                                    : label
+                          <div className="action-card-heading">
+                            <AssistantIcon index={role} small />
+                            <span>
+                              {
+                                {
+                                  message: "Client message",
+                                  summary: "Conversation summary",
+                                  crm_note: "Client note",
+                                  listing_update: "Listing notes",
+                                  intelligence: "Client situation",
+                                  task: "New task",
+                                  task_update: "Update task",
+                                  question: "Needs confirmation",
+                                }[a.kind]
+                              }
+                            </span>
+                            {a.status === "pending" ? (
+                              <select
+                                className={`review-decision ${state}`}
+                                aria-label={`Decision for ${a.title}`}
+                                value={state}
+                                disabled={locked}
+                                onChange={(e) =>
+                                  setDecisions((d) => ({
+                                    ...d,
+                                    [a.id]: e.target.value as Decision,
+                                  }))
                                 }
-                                disabled={
-                                  !data.capabilities.ai ||
-                                  locked ||
-                                  a.status !== "pending"
-                                }
-                                onClick={() => rewrite(a, value)}
                               >
-                                {rewriting === `${a.id}:${value}` ? (
-                                  <LoaderCircle size={12} className="spin" />
-                                ) : (
-                                  <SlidersHorizontal size={12} />
-                                )}{" "}
-                                {label}
-                              </button>
-                            ))}
-                          </div>
-                          <div className="draft-note">
-                            <ShieldCheck size={12} />
-                            {a.status === "approved"
-                              ? "Approved draft · saved internally · not sent"
-                              : "Draft only · approval will save it, not send it"}
-                          </div>
-                          {a.status === "approved" && (
-                            <MessageActions body={a.body} notify={notify} />
-                          )}
-                        </>
-                      )}
-                      {(a.kind === "task" ||
-                        a.kind === "task_update" ||
-                        a.kind === "intelligence") &&
-                      a.status === "pending" ? (
-                        <label className="action-date">
-                          <CalendarDays size={13} />
-                          {a.kind === "intelligence"
-                            ? "Effective date"
-                            : "Due date"}
-                          <input
-                            aria-label={`${a.kind === "intelligence" ? "Effective date" : "Due date"} for ${a.title}`}
-                            type="date"
-                            value={dates[a.id] ?? a.dueDate ?? ""}
-                            disabled={locked}
-                            onChange={(e) =>
-                              setDates((v) => ({
-                                ...v,
-                                [a.id]: e.target.value,
-                              }))
-                            }
-                          />
-                        </label>
-                      ) : (
-                        a.dueDate && (
-                          <div className="action-date">
-                            <CalendarDays size={13} />
-                            Proposed date: {shortDate(a.dueDate)}
-                          </div>
-                        )
-                      )}
-                      <details className="source-evidence">
-                        <summary>
-                          Source evidence
-                          <ChevronDown size={12} />
-                        </summary>
-                        <p>“{a.sourceQuote}”</p>
-                      </details>
-                      <details className="source-evidence review-history">
-                        <summary>
-                          Original proposal & review history
-                          <ChevronDown size={12} />
-                        </summary>
-                        {a.originalAvailable === false ? (
-                          <p>
-                            The original wording predates review history
-                            tracking and cannot be recovered. The saved decision
-                            is preserved below.
-                          </p>
-                        ) : (
-                          <div className="history-entry">
-                            <strong>{a.original?.title ?? a.title}</strong>
-                            <p>{a.original?.body ?? a.body}</p>
-                            {(a.original ? a.original.dueDate : a.dueDate) && (
-                              <small>
-                                Original due date:{" "}
-                                {shortDate(
-                                  a.original ? a.original.dueDate! : a.dueDate!,
-                                )}
-                              </small>
+                                <option value="pending">Pending</option>
+                                <option value="approved">Approved</option>
+                                <option value="rejected">Rejected</option>
+                              </select>
+                            ) : (
+                              <Badge
+                                tone={
+                                  a.status === "approved" ? "green" : "neutral"
+                                }
+                              >
+                                {a.status}
+                              </Badge>
                             )}
                           </div>
-                        )}
-                        {data.reviewHistory
-                          .filter(
-                            (h) =>
-                              h.packageId === pkg.id && h.actionId === a.id,
-                          )
-                          .map((h) => (
-                            <div className="history-entry" key={h.id}>
-                              <strong>
-                                {h.decision === "approved"
-                                  ? "Approved"
-                                  : "Rejected"}{" "}
-                                · {new Date(h.reviewedAt).toLocaleString()}
-                              </strong>
-                              <small>{h.actor} · shared workspace review</small>
-                              <p>{h.edited.body}</p>
-                              {h.edited.dueDate && (
-                                <small>
-                                  Saved due date: {shortDate(h.edited.dueDate)}
-                                </small>
-                              )}
-                            </div>
-                          ))}
-                        {a.status === "pending" && (
-                          <p>
-                            No saved decision yet. Your current edits and
-                            choices are saved only when you confirm a decision.
-                          </p>
-                        )}
-                      </details>
-                    </article>
-                  );
-                })}
+                          <h3>{a.title}</h3>
+                          {outdated.includes(a.id) && (
+                            <p className="intelligence-warning">
+                              Earlier client information · check the current
+                              situation before using this work.
+                            </p>
+                          )}
+                          <ChangePreview
+                            data={data}
+                            action={a}
+                            pkg={pkg}
+                            proposedBody={edits[a.id] ?? a.body}
+                            proposedDate={dates[a.id] ?? a.dueDate}
+                          />
+                          {a.change && a.status === "pending" && (
+                            <label
+                              className="field-caption"
+                              htmlFor={`edit-${a.id}`}
+                            >
+                              Edit proposed wording
+                            </label>
+                          )}
+                          {a.status === "pending" ? (
+                            <AutoTextarea
+                              id={`edit-${a.id}`}
+                              aria-label={`Edit ${a.title}`}
+                              value={edits[a.id] ?? a.body}
+                              maxLength={6000}
+                              disabled={locked}
+                              rows={
+                                a.kind === "message"
+                                  ? 5
+                                  : a.kind === "crm_note"
+                                    ? 4
+                                    : 3
+                              }
+                              onChange={(e) =>
+                                setEdits((v) => ({
+                                  ...v,
+                                  [a.id]: e.target.value,
+                                }))
+                              }
+                            />
+                          ) : (
+                            <p className="approved-content">{a.body}</p>
+                          )}
+                          {a.kind === "message" && (
+                            <>
+                              <div className="writing-tools">
+                                {[
+                                  ["shorter", "Shorter"],
+                                  ["natural", "More natural"],
+                                  ["professional", "More professional"],
+                                ].map(([value, label]) => (
+                                  <button
+                                    key={value}
+                                    title={
+                                      !data.capabilities.ai
+                                        ? "Configure an OpenAI key to refine with AI"
+                                        : label
+                                    }
+                                    disabled={
+                                      !data.capabilities.ai ||
+                                      locked ||
+                                      a.status !== "pending"
+                                    }
+                                    onClick={() => rewrite(a, value)}
+                                  >
+                                    {rewriting === `${a.id}:${value}` ? (
+                                      <LoaderCircle
+                                        size={12}
+                                        className="spin"
+                                      />
+                                    ) : (
+                                      <SlidersHorizontal size={12} />
+                                    )}{" "}
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="draft-note">
+                                <ShieldCheck size={12} />
+                                {a.status === "approved"
+                                  ? "Approved draft · saved internally · not sent"
+                                  : "Draft only · approval will save it, not send it"}
+                              </div>
+                              {a.status === "approved" &&
+                                !outdated.includes(a.id) && (
+                                  <MessageActions
+                                    body={a.body}
+                                    notify={notify}
+                                  />
+                                )}
+                            </>
+                          )}
+                          {(a.kind === "task" ||
+                            a.kind === "task_update" ||
+                            a.kind === "intelligence") &&
+                          a.status === "pending" ? (
+                            <label className="action-date">
+                              <CalendarDays size={13} />
+                              {a.kind === "intelligence"
+                                ? "Effective date"
+                                : "Due date"}
+                              <input
+                                aria-label={`${a.kind === "intelligence" ? "Effective date" : "Due date"} for ${a.title}`}
+                                type="date"
+                                value={dates[a.id] ?? a.dueDate ?? ""}
+                                disabled={locked}
+                                onChange={(e) =>
+                                  setDates((v) => ({
+                                    ...v,
+                                    [a.id]: e.target.value,
+                                  }))
+                                }
+                              />
+                            </label>
+                          ) : (
+                            a.dueDate && (
+                              <div className="action-date">
+                                <CalendarDays size={13} />
+                                Proposed date: {shortDate(a.dueDate)}
+                              </div>
+                            )
+                          )}
+                          <details className="source-evidence">
+                            <summary>
+                              Source evidence
+                              <ChevronDown size={12} />
+                            </summary>
+                            <p>“{a.sourceQuote}”</p>
+                          </details>
+                          <details className="source-evidence review-history">
+                            <summary>
+                              Original proposal & review history
+                              <ChevronDown size={12} />
+                            </summary>
+                            {a.originalAvailable === false ? (
+                              <p>
+                                The original wording predates review history
+                                tracking and cannot be recovered. The saved
+                                decision is preserved below.
+                              </p>
+                            ) : (
+                              <div className="history-entry">
+                                <strong>{a.original?.title ?? a.title}</strong>
+                                <p>{a.original?.body ?? a.body}</p>
+                                {(a.original
+                                  ? a.original.dueDate
+                                  : a.dueDate) && (
+                                  <small>
+                                    Original due date:{" "}
+                                    {shortDate(
+                                      a.original
+                                        ? a.original.dueDate!
+                                        : a.dueDate!,
+                                    )}
+                                  </small>
+                                )}
+                              </div>
+                            )}
+                            {data.reviewHistory
+                              .filter(
+                                (h) =>
+                                  h.packageId === pkg.id && h.actionId === a.id,
+                              )
+                              .map((h) => (
+                                <div className="history-entry" key={h.id}>
+                                  <strong>
+                                    {h.decision === "approved"
+                                      ? "Approved"
+                                      : "Rejected"}{" "}
+                                    · {new Date(h.reviewedAt).toLocaleString()}
+                                  </strong>
+                                  <small>
+                                    {h.actor} · shared workspace review
+                                  </small>
+                                  <p>{h.edited.body}</p>
+                                  {h.edited.dueDate && (
+                                    <small>
+                                      Saved due date:{" "}
+                                      {shortDate(h.edited.dueDate)}
+                                    </small>
+                                  )}
+                                </div>
+                              ))}
+                            {a.status === "pending" && (
+                              <p>
+                                No saved decision yet. Your current edits and
+                                choices are saved only when you confirm a
+                                decision.
+                              </p>
+                            )}
+                          </details>
+                        </article>
+                      );
+                    })}
+                  </Fragment>
+                ))}
               </div>
               {pending.length > 0 && (
-                <div className="review-effects-preview" aria-live="polite">
+                <div
+                  id="review-effects"
+                  className="review-effects-preview"
+                  aria-live="polite"
+                >
                   <strong>When you confirm</strong>
                   {chosen.length > 0 ? (
                     <ul>
@@ -671,16 +766,22 @@ export function Review({
           <div className="review-commit">
             <div>
               <strong>
+                {client?.name} ·{" "}
                 {pending.length
                   ? `${chosen.length} ${chosen.length === 1 ? "decision" : "decisions"} to save`
                   : `${pkg.actions.filter((a) => a.status === "approved").length} approved`}
               </strong>
               <small>
                 {pending.length
-                  ? "Changes are saved to AgentDesk only."
+                  ? `${approved.length} approved · ${rejected.length} rejected · ${remaining} pending · Nothing sent`
                   : "Saved to your shared workspace."}
               </small>
             </div>
+            {pending.length > 0 && (
+              <a className="text-link" href="#review-effects">
+                Review changes
+              </a>
+            )}
             {pending.length > 0 ? (
               <button
                 className="button primary"

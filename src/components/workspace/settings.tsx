@@ -25,6 +25,7 @@ export function Settings({
   agent,
   leader,
   onLeader,
+  onReset,
   onAgentChange,
   onClose,
   onUpdate,
@@ -34,6 +35,7 @@ export function Settings({
   agent: Agent;
   leader: boolean;
   onLeader: (v: boolean) => void;
+  onReset?: () => void;
   onAgentChange: (id: string) => void;
   onClose: () => void;
   onUpdate: (d: WorkspaceData) => void;
@@ -86,6 +88,7 @@ export function Settings({
       notify(
         "The fictional workspace has been restored. Added conversations, decisions, and preference changes were removed.",
       );
+      onReset?.();
       onClose();
     } catch (error) {
       notify((error as Error).message, "error");

@@ -17,7 +17,6 @@ import {
   AssistantIcon,
   Badge,
   Empty,
-  Modal,
   SectionTitle,
   TextLink,
   money,
@@ -27,7 +26,7 @@ import {
 import type { View } from "./types";
 import { Progress, TaskRow } from "./shared";
 import { WorkProducts } from "./work-products";
-import { AppointmentCalendar } from "./calendar-actions";
+import { AppointmentView } from "./appointment";
 
 export function Today({
   data,
@@ -60,6 +59,7 @@ export function Today({
   onUpdate: (data: WorkspaceData) => void;
   notify: (message: string, tone?: "info" | "success" | "error") => void;
 }) {
+  const [showAllTasks, setShowAllTasks] = useState(false);
   const [taskFilter, setTaskFilter] = useState("open");
   const [appointmentId, setAppointmentId] = useState<string | null>(null);
   const selectedAppointment = data.appointments.find(
@@ -86,6 +86,18 @@ export function Today({
     (item) => item.agentId === agent.id,
   );
   const next = recommendations[0];
+  const representedTasks = new Set(recommendations.flatMap((r) => r.taskIds));
+  const visibleTasks = tasks.filter(
+    (t) =>
+      t.status === taskFilter &&
+      (showAllTasks ||
+        taskFilter === "done" ||
+        (!representedTasks.has(t.id) &&
+          !packages.some((p) => p.id === t.reviewPackageId))),
+  );
+  const otherPackages = packages.filter(
+    (p) => !recommendations.some((r) => r.packageId === p.id),
+  );
   const primary = packages.find((p) => p.id === next?.packageId) || packages[0];
   const nextClient = data.clients.find(
     (client) => client.id === next?.clientId,
@@ -146,7 +158,7 @@ export function Today({
           </div>
           <h2>
             {next
-              ? "A thoughtful follow-up can move today forward."
+              ? `Follow up with ${nextClient?.name}.`
               : packages.length
                 ? "Good relationships start with the little things."
                 : "A little space to focus on what’s next."}
@@ -165,7 +177,7 @@ export function Today({
             ) : (
               <>
                 {packages.length
-                  ? `${packages.length} packages await your decisions.`
+                  ? `${packages.length} conversations are ready for your review.`
                   : "Your review queue is clear."}{" "}
                 You have <strong>{open.length} open priorities</strong> and{" "}
                 <strong>{appointments.length} appointments</strong> ahead. Your
@@ -221,11 +233,40 @@ export function Today({
             pendingOnly
             onUpdate={onUpdate}
             notify={notify}
-            title="Documents awaiting your review"
+            title="Documents ready for review"
           />
-          <section className="priorities-section">
+          {otherPackages.length > 0 && (
+            <section className="priorities-section">
+              <SectionTitle title="Conversations ready for review" />
+              {otherPackages.map((p) => (
+                <button
+                  key={p.id}
+                  className="review-priority"
+                  onClick={() => onReview(p.id)}
+                >
+                  <Inbox size={20} />
+                  <span className="priority-body">
+                    <strong>
+                      {data.clients.find((c) => c.id === p.clientId)?.name}
+                    </strong>
+                    <small>
+                      {p.title} ·{" "}
+                      {p.actions.filter((a) => a.status === "pending").length}{" "}
+                      decisions
+                    </small>
+                  </span>
+                  <ArrowUpRight size={18} />
+                </button>
+              ))}
+            </section>
+          )}
+          <details className="priorities-section secondary-priorities">
+            <summary>
+              Other follow-ups{" "}
+              <span>{Math.max(0, recommendations.length - 1)}</span>
+            </summary>
             <SectionTitle
-              title="Relationships that need a little attention"
+              title="Other client follow-ups"
               aside={
                 <TextLink onClick={onRefresh}>
                   {refreshing ? "Preparing…" : "Refresh & prepare"}
@@ -236,7 +277,7 @@ export function Today({
               Relationship Assistant · evaluated from saved records on refresh.
               No background monitoring.
             </p>
-            {recommendations.map((item) => (
+            {recommendations.slice(1).map((item) => (
               <button
                 key={item.id}
                 className="review-priority"
@@ -270,23 +311,23 @@ export function Today({
                 <ArrowUpRight size={18} />
               </button>
             ))}
-            {!recommendations.length && (
+            {recommendations.length <= 1 && (
               <Empty
-                title="No evidenced follow-up to flag"
-                description="No open commitment or relevant task calls for attention in the available records. This does not establish that every client has been contacted."
+                title="No other follow-ups to flag"
+                description="Your next follow-up is shown above when one needs attention. Refresh to check the latest saved records."
               />
             )}
-          </section>
+          </details>
           <section className="priorities-section">
             <SectionTitle
-              title="Your next best moves"
+              title={showAllTasks ? "All your tasks" : "Other tasks"}
               aside={
                 <div className="segmented">
                   <button
                     className={taskFilter === "open" ? "selected" : ""}
                     onClick={() => setTaskFilter("open")}
                   >
-                    To do <span>{open.length}</span>
+                    To do
                   </button>
                   <button
                     className={taskFilter === "done" ? "selected" : ""}
@@ -297,57 +338,38 @@ export function Today({
                 </div>
               }
             />
-            {packages.length > 0 && taskFilter === "open" && (
-              <button
-                className="review-priority"
-                onClick={() => onReview(primary?.id)}
-              >
-                <span className="priority-review-icon">
-                  <Inbox size={21} />
-                </span>
-                <span className="priority-body">
-                  <span className="inline-label">
-                    READY FOR YOUR REVIEW <span className="mini-dot" />{" "}
-                    {packages.length} work{" "}
-                    {packages.length === 1 ? "package" : "packages"}
-                  </span>
-                  <strong>
-                    {primary?.title ||
-                      "Your assistants have prepared your next steps"}
-                  </strong>
-                  <small>
-                    Thoughtful follow-ups. Organized next steps. All in one
-                    review.
-                  </small>
-                </span>
-                <ArrowUpRight size={20} />
-              </button>
-            )}
+            <button
+              className="text-link task-scope-toggle"
+              aria-pressed={showAllTasks}
+              onClick={() => setShowAllTasks(!showAllTasks)}
+            >
+              {showAllTasks
+                ? "Show other tasks only"
+                : `All tasks · ${open.length} to do`}
+            </button>
             <div className="task-list">
-              {tasks
-                .filter((t) => t.status === taskFilter)
-                .map((t) => (
-                  <TaskRow
-                    key={t.id}
-                    task={t}
-                    data={data}
-                    onToggle={() => onTask(t)}
-                    onProperty={onProperty}
-                    onUpdate={onUpdate}
-                    notify={notify}
-                  />
-                ))}
-              {!tasks.filter((t) => t.status === taskFilter).length && (
+              {visibleTasks.map((t) => (
+                <TaskRow
+                  key={t.id}
+                  task={t}
+                  data={data}
+                  onToggle={() => onTask(t)}
+                  onProperty={onProperty}
+                  onUpdate={onUpdate}
+                  notify={notify}
+                />
+              ))}
+              {!visibleTasks.length && (
                 <Empty
                   title={
                     taskFilter === "done"
                       ? "Your next small win is waiting."
-                      : "You’re all caught up."
+                      : "No other tasks to show."
                   }
                   description={
                     taskFilter === "done"
                       ? "Check off a priority and it will appear here."
-                      : "Your next tasks will land here after review."
+                      : "Follow-up and review tasks are grouped with their work above. Use All tasks to see every item."
                   }
                 />
               )}
@@ -496,59 +518,17 @@ export function Today({
         </aside>
       </div>
       {selectedAppointment && (
-        <Modal
-          title={selectedAppointment.title}
-          subtitle={`${shortDate(selectedAppointment.startsAt)} · ${time(selectedAppointment.startsAt)} – ${time(selectedAppointment.endsAt)}`}
+        <AppointmentView
+          appointment={selectedAppointment}
+          data={data}
+          onUpdate={onUpdate}
+          notify={notify}
+          onClient={(id) => {
+            setAppointmentId(null);
+            onClient(id);
+          }}
           onClose={() => setAppointmentId(null)}
-        >
-          <div className="client-detail">
-            <Badge
-              tone={
-                selectedAppointment.status === "confirmed" ? "green" : "amber"
-              }
-            >
-              {selectedAppointment.status}
-            </Badge>
-            <div className="client-briefing">
-              <div className="eyebrow">YOUR APPOINTMENT BRIEFING</div>
-              <p>{selectedAppointment.briefing}</p>
-              <small>{selectedAppointment.location}</small>
-            </div>
-            {selectedAppointment.clientId && (
-              <TextLink
-                onClick={() => {
-                  const id = selectedAppointment.clientId!;
-                  setAppointmentId(null);
-                  onClient(id);
-                }}
-              >
-                Open client record
-              </TextLink>
-            )}
-            <div className="info-strip">
-              <CalendarDays size={17} />
-              <p>
-                Saved workspace appointment. External calendars are not
-                connected.
-              </p>
-            </div>
-            <AppointmentCalendar appointment={selectedAppointment} />
-            <WorkProducts
-              data={data}
-              onUpdate={onUpdate}
-              notify={notify}
-              filter={{ appointmentId: selectedAppointment.id }}
-              context={{
-                kind: "appointment_briefing",
-                agentId: selectedAppointment.agentId,
-                clientId: selectedAppointment.clientId,
-                propertyId: selectedAppointment.propertyId,
-                appointmentId: selectedAppointment.id,
-              }}
-              title="Prepared appointment briefings"
-            />
-          </div>
-        </Modal>
+        />
       )}
     </>
   );
