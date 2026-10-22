@@ -15,7 +15,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import type { WorkspaceData, Agent } from "@/lib/types";
-import { AssistantIcon, Modal, workforce } from "../ui";
+import { AssistantIcon, AutoTextarea, Modal, workforce } from "../ui";
 import { request } from "./client-api";
 import { elapsedLabel, MAX_AUDIO_BYTES } from "./recording-helpers";
 import { useVoiceRecorder } from "./use-voice-recorder";
@@ -169,15 +169,16 @@ export function Capture({
     >
       <div className="capture-body">
         {!data.capabilities.ai && (
-          <div className="info-strip">
-            <AlertCircle size={18} />
+          <details className="availability-note">
+            <summary>
+              Live AI is unavailable · saved examples are ready in Review
+            </summary>
             <p>
-              <strong>Live AI hasn’t been connected yet.</strong> You can write
-              notes and record or preview audio locally. A server OpenAI API key
-              is required to transcribe and prepare new work. Clearly labeled
-              saved sample work is available in Review.
+              You can write notes and preview audio locally. Transcription and
+              new work preparation become available when your workspace
+              administrator connects AI.
             </p>
-          </div>
+          </details>
         )}
         <div className="capture-selects">
           <label>
@@ -256,12 +257,18 @@ export function Capture({
             onChange={(event) => setAuthorized(event.target.checked)}
           />
           <span>
-            I have the required consent to record and am authorized to share
-            these notes or this recording with OpenAI when I select Prepare my
-            work. The transcript and prepared work will be saved in AgentDesk.
-            Audio is not saved on the server.
+            I have the required consent to record and share these notes or audio
+            with OpenAI when I select Prepare my work.
           </span>
         </label>
+        <details className="capture-privacy">
+          <summary>How your conversation is handled</summary>
+          <p>
+            The transcript and prepared work are saved in AgentDesk. Audio stays
+            in this browser until you select Prepare my work and is not saved on
+            the server.
+          </p>
+        </details>
         {mode === "note" ? (
           <>
             <div className="note-label">
@@ -282,7 +289,7 @@ export function Capture({
                 </button>
               )}
             </div>
-            <textarea
+            <AutoTextarea
               id="conversation-note"
               className="capture-textarea"
               placeholder="Describe the conversation, what is confirmed, what is still uncertain, and any next steps…"
@@ -435,7 +442,18 @@ export function Capture({
             {step}
           </div>
         )}
-        <div className="modal-footer">
+        <div className="modal-footer sticky-actions">
+          <p className="prepare-help">
+            {!data.capabilities.ai
+              ? "AI must be connected to prepare new work."
+              : !authorized
+                ? "Confirm consent to continue."
+                : mode === "note" && note.trim().length < 30
+                  ? "Add at least 30 characters of conversation context."
+                  : mode === "audio" && !file
+                    ? "Record or choose audio, then review it."
+                    : "Ready when you are. You review the prepared work."}
+          </p>
           <span>
             <ShieldCheck size={15} />
             You review every action before it’s applied.

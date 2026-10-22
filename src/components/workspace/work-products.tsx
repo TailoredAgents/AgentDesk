@@ -1,6 +1,6 @@
 "use client";
 import { situationImpacts } from "@/lib/intelligence";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import {
   FileText,
   Plus,
@@ -19,7 +19,15 @@ import type {
   WorkProductKind,
   WorkProductVersion,
 } from "@/lib/work-product-types";
-import { Badge, Modal, SectionTitle, shortDate } from "../ui";
+import {
+  Badge,
+  Modal,
+  SectionTitle,
+  SectionNav,
+  AutoTextarea,
+  useDraftGuard,
+  shortDate,
+} from "../ui";
 import { request } from "./client-api";
 import { workProductContentSchema } from "@/lib/work-product-schema";
 
@@ -61,7 +69,7 @@ export function WorkProducts({
 }: {
   data: WorkspaceData;
   onUpdate: (data: WorkspaceData) => void;
-  notify: (message: string) => void;
+  notify: (message: string, tone?: "info" | "success" | "error") => void;
   context?: ProductContext;
   filter?: ProductFilter;
   pendingOnly?: boolean;
@@ -131,7 +139,7 @@ export function WorkProducts({
           : "Work product prepared for your review. Nothing has been delivered.",
       );
     } catch (error) {
-      notify((error as Error).message);
+      notify((error as Error).message, "error");
     } finally {
       submitting.current = false;
       setBusy(false);
@@ -283,10 +291,12 @@ function WorkProductEditor({
   onClose: () => void;
   onVersion: (id: string) => void;
   onUpdate: (data: WorkspaceData) => void;
-  notify: (message: string) => void;
+  notify: (message: string, tone?: "info" | "success" | "error") => void;
   generating: boolean;
   onGenerate: (copyVersionId?: string, refreshFromCurrent?: boolean) => void;
 }) {
+  const sectionId = useId();
+  const [mode, setMode] = useState<"preview" | "edit">("preview");
   const [content, setContent] = useState<WorkProductContent>(() =>
     structuredClone(version.content),
   );
@@ -299,6 +309,8 @@ function WorkProductEditor({
   const submitting = useRef(false);
   const pending = version.status === "pending";
   const dirty = JSON.stringify(content) !== baseline;
+  const guard = useDraftGuard(dirty);
+  const editing = pending && mode === "edit";
   const validContent = workProductContentSchema.safeParse(content).success;
   const locked = !!busy || generating;
   const stale = version.editRevision !== editRevision;
@@ -365,12 +377,14 @@ function WorkProductEditor({
   return (
     <Modal
       wide
+      className="document-modal"
       title={kindName(product.kind)}
       subtitle="Prepared by your workforce. Finalized by you."
       onClose={() => {
-        if (!locked) onClose();
+        if (!locked) guard.requestLeave(onClose);
       }}
     >
+      {guard.dialog}
       <div className="work-product-editor">
         {situationImpacts(data).some((i) => i.versionId === version.id) && (
           <div className="intelligence-exceptions">
@@ -437,6 +451,39 @@ function WorkProductEditor({
             : ""}{" "}
           · {version.snapshot.agent.name}
         </p>
+        <div className="document-mode-bar">
+          <nav className="segmented-nav" aria-label="Document mode">
+            <button
+              aria-pressed={mode === "preview"}
+              onClick={() => setMode("preview")}
+            >
+              Preview
+            </button>
+            {pending && (
+              <button
+                aria-pressed={mode === "edit"}
+                onClick={() => setMode("edit")}
+              >
+                Edit document
+              </button>
+            )}
+          </nav>
+          <span className="save-status" role="status">
+            {dirty
+              ? "Unsaved edits · included in preview"
+              : pending
+                ? "Draft · ready for your review"
+                : "Saved version"}
+          </span>
+        </div>
+        <SectionNav
+          mobileSelect
+          label="Document sections"
+          items={displayed.sections.map((section, index) => ({
+            id: `${sectionId}-${index}`,
+            label: `${index + 1}. ${section.title}`,
+          }))}
+        />
         {stale && pending && (
           <div className="form-error" role="alert">
             This version changed elsewhere. Reload the saved draft before
@@ -446,7 +493,7 @@ function WorkProductEditor({
             </button>
           </div>
         )}
-        {pending ? (
+        {editing ? (
           <div className="product-edit-fields">
             <label>
               Document title
@@ -461,7 +508,7 @@ function WorkProductEditor({
             </label>
             <label>
               Introduction
-              <textarea
+              <AutoTextarea
                 rows={3}
                 value={content.introduction}
                 maxLength={1200}
@@ -479,7 +526,12 @@ function WorkProductEditor({
           </>
         )}
         {displayed.sections.map((section, sectionIndex) => (
-          <section className="product-section" key={sectionIndex}>
+          <section
+            className="product-section"
+            id={`${sectionId}-${sectionIndex}`}
+            tabIndex={-1}
+            key={sectionIndex}
+          >
             <Badge
               tone={
                 section.kind === "general_guidance"
@@ -491,7 +543,7 @@ function WorkProductEditor({
             >
               {sectionNames[section.kind]}
             </Badge>
-            {pending ? (
+            {editing ? (
               <input
                 className="product-section-title"
                 aria-label={`Section ${sectionIndex + 1} title`}
@@ -512,15 +564,26 @@ function WorkProductEditor({
             ) : (
               <h3>{section.title}</h3>
             )}
+            {section.kind === "general_guidance" && (
+              <p className="work-product-note">
+                Optional suggestions to discuss with your agent, not agreed
+                commitments.
+              </p>
+            )}
             {section.items.map((item, index) => (
               <div className="product-item" key={index}>
-                <span className="product-item-label">
-                  {item.certainty === "general"
-                    ? "General guidance · not an agreed commitment"
-                    : item.certainty}
-                </span>
-                {pending ? (
-                  <textarea
+                {!(
+                  item.certainty === "general" &&
+                  section.kind === "general_guidance"
+                ) && (
+                  <span className="product-item-label">
+                    {item.certainty === "general"
+                      ? "General guidance · not an agreed commitment"
+                      : item.certainty}
+                  </span>
+                )}
+                {editing ? (
+                  <AutoTextarea
                     aria-label={`${section.title} item ${index + 1}`}
                     rows={2}
                     value={item.text}
@@ -631,7 +694,7 @@ function WorkProductEditor({
                 versions or making another draft.
               </p>
             )}
-            <div className="product-actions">
+            <div className="product-actions sticky-actions document-review-actions">
               <button
                 className="button secondary"
                 disabled={locked || !dirty || stale || !validContent}

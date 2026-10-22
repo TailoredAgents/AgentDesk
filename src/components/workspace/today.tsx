@@ -58,7 +58,7 @@ export function Today({
   onRefresh: () => void;
   refreshing: boolean;
   onUpdate: (data: WorkspaceData) => void;
-  notify: (message: string) => void;
+  notify: (message: string, tone?: "info" | "success" | "error") => void;
 }) {
   const [taskFilter, setTaskFilter] = useState("open");
   const [appointmentId, setAppointmentId] = useState<string | null>(null);
@@ -135,7 +135,10 @@ export function Today({
           <p>
             {next ? (
               <>
-                <strong>{nextClient?.name}</strong>: {next.reason}{" "}
+                <strong>{nextClient?.name}</strong>:{" "}
+                {next.reason.replace(/\b\d{4}-\d{2}-\d{2}\b/g, (date) =>
+                  shortDate(date),
+                )}{" "}
                 {appointments[0]
                   ? `Coming up: ${appointments[0].title} (${appointments[0].status}).`
                   : "No upcoming appointment is recorded."}
@@ -185,6 +188,7 @@ export function Today({
         </div>
       </section>
       <IntelligenceExceptions
+        compact
         data={data}
         agentId={agent.id}
         onClient={onClient}
@@ -238,7 +242,11 @@ export function Today({
                     }{" "}
                     — {item.title}
                   </strong>
-                  <small>{item.reason}</small>
+                  <small>
+                    {item.reason.replace(/\b\d{4}-\d{2}-\d{2}\b/g, (date) =>
+                      shortDate(date),
+                    )}
+                  </small>
                 </span>
                 <ArrowUpRight size={18} />
               </button>

@@ -7,7 +7,7 @@ export function MessageActions({
   notify,
 }: {
   body: string;
-  notify: (message: string) => void;
+  notify: (message: string, tone?: "info" | "success" | "error") => void;
 }) {
   const [fallback, setFallback] = useState(false);
   return (

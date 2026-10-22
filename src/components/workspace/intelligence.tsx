@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, History, Sparkles } from "lucide-react";
 import type {
   Client,
@@ -18,10 +18,14 @@ export function ChangePreview({
   data,
   action,
   pkg,
+  proposedBody,
+  proposedDate,
 }: {
   data: WorkspaceData;
   action: ProposedAction;
   pkg: WorkPackage;
+  proposedBody?: string;
+  proposedDate?: string | null;
 }) {
   const c = action.change;
   if (!c) return null;
@@ -31,23 +35,52 @@ export function ChangePreview({
       <div className="eyebrow">
         {c.type === "task" ? "UPDATE EXISTING TASK" : "SITUATION CHANGE"}
       </div>
-      <strong>Previously recorded</strong>
-      {c.type === "task" ? (
-        <p>
-          {c.before.detail}
-          <br />
-          Due: {c.before.dueDate || "not set"}
-        </p>
-      ) : c.before.length ? (
-        c.before.map((f) => (
-          <p key={f.id}>
-            {f.value} <Badge tone="neutral">{f.certainty}</Badge>
-          </p>
-        ))
-      ) : (
-        <p>No reviewed information on this topic yet.</p>
-      )}
-      {c.type === "fact" && (
+      <div className="change-comparison">
+        <div>
+          <strong>Before</strong>
+          {c.type === "task" ? (
+            <p>
+              {c.before.detail}
+              <br />
+              Due: {c.before.dueDate ? shortDate(c.before.dueDate) : "not set"}
+            </p>
+          ) : c.before.length ? (
+            c.before.map((f) => (
+              <p key={f.id}>
+                {f.value} <Badge tone="neutral">{f.certainty}</Badge>
+              </p>
+            ))
+          ) : (
+            <p>No reviewed information on this topic yet.</p>
+          )}
+        </div>
+        <div className="change-proposed">
+          <strong>
+            {action.status === "approved"
+              ? "Approved change"
+              : action.status === "rejected"
+                ? "Rejected proposal"
+                : c.type === "fact" && c.disposition === "retire"
+                  ? "Proposed retirement"
+                  : "Proposed"}
+          </strong>
+          <p>{proposedBody ?? action.body}</p>
+          {(proposedDate ?? action.dueDate) && (
+            <small>
+              {c.type === "task" ? "Due" : "Effective"}:{" "}
+              {shortDate(proposedDate ?? action.dueDate)}
+            </small>
+          )}
+          {c.type === "fact" && (
+            <Badge
+              tone={c.observation.certainty === "confirmed" ? "green" : "amber"}
+            >
+              {c.observation.certainty}
+            </Badge>
+          )}
+        </div>
+      </div>
+      {c.type === "fact" && action.status === "pending" && (
         <>
           <strong>On approval</strong>
           <p>
@@ -65,13 +98,19 @@ export function ChangePreview({
           </p>
         </>
       )}
-      {c.type === "task" && (
+      {action.status === "rejected" && (
+        <p>This proposal was rejected. It did not change the saved record.</p>
+      )}
+      {action.status === "approved" && (
+        <p>This change was approved and recorded in the review history.</p>
+      )}
+      {c.type === "task" && action.status === "pending" && (
         <p>
           This updates one existing task. Its completion status and confirmed
           calendar time stay under human control.
         </p>
       )}
-      {impacts.length > 0 && (
+      {impacts.length > 0 && action.status !== "rejected" && (
         <details>
           <summary>
             {new Set(impacts.map((i) => `${i.kind}:${i.targetId}`)).size}{" "}
@@ -79,6 +118,7 @@ export function ChangePreview({
           </summary>
           {impacts.map((i) => (
             <p key={i.id}>
+              <Badge>{i.kind.replaceAll("_", " ")}</Badge>{" "}
               <strong>{i.title}</strong>
               <br />
               {i.detail}
@@ -97,6 +137,7 @@ export function IntelligenceExceptions({
   propertyId,
   onClient,
   onReview,
+  compact = false,
 }: {
   data: WorkspaceData;
   agentId?: string;
@@ -104,6 +145,7 @@ export function IntelligenceExceptions({
   propertyId?: string;
   onClient?: (id: string) => void;
   onReview?: (id: string) => void;
+  compact?: boolean;
 }) {
   const match = (v: {
     agentId: string;
@@ -136,12 +178,26 @@ export function IntelligenceExceptions({
       <div className="eyebrow">
         <Sparkles size={14} /> SITUATIONS TO WATCH
       </div>
-      <p>
-        {packages.length} change review{packages.length === 1 ? "" : "s"} ·{" "}
-        {records.length} connected record{records.length === 1 ? "" : "s"} to
-        check · {uncertain.length} unconfirmed or disputed fact
-        {uncertain.length === 1 ? "" : "s"}
-      </p>
+      <div className="record-summary">
+        {!!packages.length && (
+          <Badge tone="blue">
+            {packages.length} change{" "}
+            {packages.length === 1 ? "review" : "reviews"}
+          </Badge>
+        )}
+        {!!records.length && (
+          <Badge tone="amber">
+            {records.length} {records.length === 1 ? "record" : "records"} to
+            check
+          </Badge>
+        )}
+        {!!uncertain.length && (
+          <Badge tone="amber">
+            {uncertain.length} {uncertain.length === 1 ? "detail" : "details"}{" "}
+            to confirm
+          </Badge>
+        )}
+      </div>
       {packages.slice(0, 4).map((p) => (
         <button
           className="text-link"
@@ -152,33 +208,47 @@ export function IntelligenceExceptions({
           <ArrowUpRight size={14} />
         </button>
       ))}
-      {records.slice(0, 4).map((i) => (
-        <div className="intelligence-exception" key={i.id}>
-          <strong>{i.title}</strong>
-          <p>{i.detail}</p>
-          {onClient && (
-            <button className="text-link" onClick={() => onClient(i.clientId)}>
-              Open client context <ArrowUpRight size={13} />
-            </button>
-          )}
-        </div>
-      ))}
-      {uncertain.slice(0, 3).map((f) => (
-        <div className="intelligence-exception" key={f.id}>
-          <strong>
-            {data.clients.find((c) => c.id === f.clientId)?.name} ·{" "}
-            {topicLabels[f.topic]}
-          </strong>
-          <p>
-            {f.value} <Badge tone="amber">{f.certainty}</Badge>
-          </p>
-          {onClient && (
-            <button className="text-link" onClick={() => onClient(f.clientId)}>
-              View relationship & situation <ArrowUpRight size={13} />
-            </button>
-          )}
-        </div>
-      ))}
+      {(records.length > 0 || uncertain.length > 0) && (
+        <details
+          className="situation-details"
+          open={compact ? undefined : true}
+        >
+          <summary>Facts & connected work to check</summary>
+          {records.slice(0, 4).map((i) => (
+            <div className="intelligence-exception" key={i.id}>
+              <strong>{i.title}</strong>
+              <p>{i.detail}</p>
+              {onClient && (
+                <button
+                  className="text-link"
+                  onClick={() => onClient(i.clientId)}
+                >
+                  Open client context <ArrowUpRight size={13} />
+                </button>
+              )}
+            </div>
+          ))}
+          {uncertain.slice(0, 3).map((f) => (
+            <div className="intelligence-exception" key={f.id}>
+              <strong>
+                {data.clients.find((c) => c.id === f.clientId)?.name} ·{" "}
+                {topicLabels[f.topic]}
+              </strong>
+              <p>
+                {f.value} <Badge tone="amber">{f.certainty}</Badge>
+              </p>
+              {onClient && (
+                <button
+                  className="text-link"
+                  onClick={() => onClient(f.clientId)}
+                >
+                  View relationship & situation <ArrowUpRight size={13} />
+                </button>
+              )}
+            </div>
+          ))}
+        </details>
+      )}
       {records.length > 4 && (
         <small>
           Open the client and document history for all affected records.
@@ -199,9 +269,17 @@ export function ClientIntelligence({
   client: Client;
   onUpdate: (data: WorkspaceData) => void;
   onReview: (id: string) => void;
-  notify: (message: string) => void;
+  notify: (message: string, tone?: "info" | "success" | "error") => void;
 }) {
   const [editing, setEditing] = useState<ClientFact | null>(null);
+  const correctionInput = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (!editing) return;
+    correctionInput.current?.focus({ preventScroll: true });
+    correctionInput.current
+      ?.closest(".intelligence-correction")
+      ?.scrollIntoView({ block: "start" });
+  }, [editing?.id]);
   const [value, setValue] = useState("");
   const [certainty, setCertainty] = useState<
     "confirmed" | "requested" | "uncertain"
@@ -241,7 +319,7 @@ export function ClientIntelligence({
       );
       onReview(result.packageId);
     } catch (error) {
-      notify((error as Error).message);
+      notify((error as Error).message, "error");
     } finally {
       setBusy(false);
     }
@@ -304,84 +382,14 @@ export function ClientIntelligence({
           Correct or retire
         </button>
       )}
-    </article>
-  );
-  return (
-    <section className="client-intelligence">
-      <SectionTitle title="Relationship & situation" />
-      <p className="small-text">
-        Reviewed information shared by all five assistants. Requests remain
-        requests until a confirmed update is reviewed.
-      </p>
-      {data.workspace.sample && client.id === "sarah" && (
-        <details className="intelligence-demo">
-          <summary>Connected example · Sarah’s second conversation</summary>
-          <p>
-            First approve the original photography task and seller PDF in
-            Review. Then open the saved change review to see how the new plan
-            affects that work. This is a fictional saved example, not a live
-            model result.
-          </p>
-          <blockquote>{situationSampleTranscript}</blockquote>
-          <button
-            className="button secondary"
-            disabled={busy}
-            onClick={async () => {
-              if (busy) return;
-              setBusy(true);
-              try {
-                const result = await request<{
-                  workspace: WorkspaceData;
-                  packageId: string;
-                }>("/api/intelligence/sample", "POST", {});
-                onUpdate(result.workspace);
-                onReview(result.packageId);
-              } catch (error) {
-                notify((error as Error).message);
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            Open saved change review
-          </button>
-        </details>
-      )}
-      {[
-        [
-          "Who they are",
-          current.filter((f) =>
-            ["objective", "communication", "buyer_priority"].includes(f.topic),
-          ),
-        ],
-        [
-          "What's happening now",
-          current.filter(
-            (f) =>
-              !["objective", "communication", "buyer_priority"].includes(
-                f.topic,
-              ),
-          ),
-        ],
-      ].map(([heading, list]) => (
-        <div key={heading as string}>
-          <h3 className="small-heading">{heading as string}</h3>
-          {(list as ClientFact[]).length ? (
-            (list as ClientFact[]).map(render)
-          ) : (
-            <p className="small-text">
-              No reviewed facts yet. New conversations can propose information
-              for approval.
-            </p>
-          )}
-        </div>
-      ))}
-      {editing && (
+      {editing?.id === f.id && (
         <div className="intelligence-correction">
           <h3>Correct {topicLabels[editing.topic].toLowerCase()}</h3>
+          <p className="correction-context">Recorded: {editing.value}</p>
           <label>
             Current wording
             <textarea
+              ref={correctionInput}
               value={value}
               onChange={(e) => setValue(e.target.value)}
               maxLength={1000}
@@ -415,7 +423,7 @@ export function ClientIntelligence({
               Prepare correction
             </button>
             <button
-              className="button secondary"
+              className="button secondary danger"
               disabled={busy}
               onClick={() => save(true)}
             >
@@ -436,11 +444,83 @@ export function ClientIntelligence({
           </small>
         </div>
       )}
+    </article>
+  );
+  return (
+    <section className="client-intelligence">
+      <SectionTitle title="Relationship & situation" />
+      <p className="small-text">
+        Reviewed information shared by all five assistants. Requests remain
+        requests until a confirmed update is reviewed.
+      </p>
+      {[
+        [
+          "Who they are",
+          current.filter((f) =>
+            ["objective", "communication", "buyer_priority"].includes(f.topic),
+          ),
+        ],
+        [
+          "What's happening now",
+          current.filter(
+            (f) =>
+              !["objective", "communication", "buyer_priority"].includes(
+                f.topic,
+              ),
+          ),
+        ],
+      ].map(([heading, list]) => (
+        <div key={heading as string}>
+          <h3 className="small-heading">{heading as string}</h3>
+          {(list as ClientFact[]).length ? (
+            (list as ClientFact[]).map(render)
+          ) : (
+            <p className="small-text">
+              No reviewed facts yet. New conversations can propose information
+              for approval.
+            </p>
+          )}
+        </div>
+      ))}
       <IntelligenceExceptions
         data={data}
         clientId={client.id}
         onReview={onReview}
       />
+      {data.workspace.sample && client.id === "sarah" && (
+        <details className="intelligence-demo">
+          <summary>Connected example · Sarah’s second conversation</summary>
+          <p>
+            First approve the original photography task and seller PDF in
+            Review. Then open the saved change review to see how the new plan
+            affects that work. This is a fictional saved example, not a live
+            model result.
+          </p>
+          <blockquote>{situationSampleTranscript}</blockquote>
+          <button
+            className="button secondary"
+            disabled={busy}
+            onClick={async () => {
+              if (busy) return;
+              setBusy(true);
+              try {
+                const result = await request<{
+                  workspace: WorkspaceData;
+                  packageId: string;
+                }>("/api/intelligence/sample", "POST", {});
+                onUpdate(result.workspace);
+                onReview(result.packageId);
+              } catch (error) {
+                notify((error as Error).message, "error");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Open saved change review
+          </button>
+        </details>
+      )}
       {facts.some((f) => f.status !== "current") && (
         <details className="intelligence-history">
           <summary>

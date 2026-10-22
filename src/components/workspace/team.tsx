@@ -1,7 +1,13 @@
 "use client";
 import { IntelligenceExceptions } from "./intelligence";
 
-import { ArrowUpRight, Users, Check, ShieldCheck } from "lucide-react";
+import {
+  ArrowUpRight,
+  Users,
+  Check,
+  Activity,
+  ShieldCheck,
+} from "lucide-react";
 import type { WorkspaceData } from "@/lib/types";
 import {
   AssistantIcon,
@@ -68,6 +74,7 @@ export function Team({
         </button>
       </div>
       <IntelligenceExceptions
+        compact
         data={data}
         onClient={onClient}
         onReview={onReview}
@@ -77,21 +84,43 @@ export function Team({
         <div>
           <div className="eyebrow">A NOTE FROM YOUR TEAM COACH</div>
           <h2>A few small moves can make a big difference.</h2>
-          <p>
-            {insight.summary} {insight.coaching}
-          </p>
-          <p className="small-text">
-            {completed.length} tasks marked complete · {insight.liveUsers}{" "}
-            agents with live AI packages · {insight.livePackages.length} live AI
-            packages. Saved sample output is excluded from live usage.
-          </p>
-          <p className="small-text">
-            {approvedDocuments.length} approved PDF{" "}
-            {approvedDocuments.length === 1 ? "version" : "versions"} saved ·{" "}
-            {pendingDocuments.length} document{" "}
-            {pendingDocuments.length === 1 ? "version" : "versions"} awaiting
-            review. These are produced documents, not delivery confirmations.
-          </p>
+          <p>{insight.coaching}</p>
+          <div className="team-metrics">
+            <div>
+              <strong>{pending.length}</strong>
+              <span>Packages to review</span>
+            </div>
+            <div>
+              <strong>
+                {
+                  open.filter((task) =>
+                    isOverdue(task, data.workspace.referenceDate),
+                  ).length
+                }
+              </strong>
+              <span>Overdue tasks</span>
+            </div>
+            <div>
+              <strong>{bottlenecks.length}</strong>
+              <span>Listings needing attention</span>
+            </div>
+            <div>
+              <strong>{approvedDocuments.length}</strong>
+              <span>Approved PDF versions</span>
+            </div>
+          </div>
+          <details className="team-record-details">
+            <summary>More workspace counts</summary>
+            <p>
+              {completed.length} tasks complete · {pendingDocuments.length}{" "}
+              documents in review · {insight.liveUsers} agents with live AI
+              packages · {insight.livePackages.length} live AI packages.
+            </p>
+            <p>
+              Saved samples are excluded from live usage. Document counts do not
+              confirm delivery.
+            </p>
+          </details>
         </div>
         <Badge tone="white">Based on workspace records</Badge>
       </div>
@@ -104,6 +133,126 @@ export function Team({
             </span>
           }
         />
+        <div className="team-agent-cards">
+          {data.agents.map((agent) => {
+            const tasks = data.tasks.filter((t) => t.agentId === agent.id);
+            const packages = data.packages.filter(
+              (p) => p.agentId === agent.id,
+            );
+            const pending = packages.filter((p) => p.status === "pending");
+            const followUps = data.recommendations.filter(
+              (r) => r.agentId === agent.id,
+            );
+            const versions = data.workProducts
+              .filter((p) => p.agentId === agent.id)
+              .flatMap((p) => p.versions);
+            return (
+              <article className="team-agent-card" key={agent.id}>
+                <div className="team-person">
+                  <Avatar agent={agent} />
+                  <div>
+                    <h3>{agent.name}</h3>
+                    <p>{agent.role}</p>
+                  </div>
+                </div>
+                <div className="record-summary">
+                  <Badge tone={pending.length ? "blue" : "green"}>
+                    {pending.length
+                      ? `${pending.length} ${pending.length === 1 ? "package" : "packages"} in review`
+                      : "Reviews up to date"}
+                  </Badge>
+                  <Badge tone="amber">
+                    {
+                      tasks.filter((t) =>
+                        isOverdue(t, data.workspace.referenceDate),
+                      ).length
+                    }{" "}
+                    overdue
+                  </Badge>
+                </div>
+                <div className="product-actions">
+                  {pending.length > 0 && (
+                    <button
+                      className="button secondary"
+                      onClick={() => onReview(pending[0].id)}
+                    >
+                      Review work <ArrowUpRight size={15} />
+                    </button>
+                  )}
+                  {followUps.length > 0 && (
+                    <button
+                      className="text-link"
+                      onClick={() => onClient(followUps[0].clientId)}
+                    >
+                      {followUps.length}{" "}
+                      {followUps.length === 1 ? "follow-up" : "follow-ups"}{" "}
+                      <ArrowUpRight size={15} />
+                    </button>
+                  )}
+                </div>
+                <details>
+                  <summary>All workspace counts</summary>
+                  <dl>
+                    <div>
+                      <dt>Listings</dt>
+                      <dd>
+                        {
+                          data.properties.filter((p) => p.agentId === agent.id)
+                            .length
+                        }
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Open tasks</dt>
+                      <dd>{tasks.filter((t) => t.status === "open").length}</dd>
+                    </div>
+                    <div>
+                      <dt>Completed tasks</dt>
+                      <dd>
+                        {tasks.filter((t) => t.status === "done").length} /{" "}
+                        {tasks.length}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Prepared packages</dt>
+                      <dd>
+                        {packages.filter((p) => p.origin === "openai").length}{" "}
+                        live ·{" "}
+                        {packages.filter((p) => p.origin === "sample").length}{" "}
+                        saved
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Approved PDFs</dt>
+                      <dd>
+                        {
+                          versions.filter(
+                            (v) => v.status === "approved" && v.hasPdf,
+                          ).length
+                        }
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Documents in review</dt>
+                      <dd>
+                        {versions.filter((v) => v.status === "pending").length}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Recorded activities</dt>
+                      <dd>
+                        {
+                          data.activities.filter((a) => a.agentId === agent.id)
+                            .length
+                        }
+                      </dd>
+                    </div>
+                  </dl>
+                </details>
+              </article>
+            );
+          })}
+        </div>
         <div className="team-table-wrap">
           <table className="team-table">
             <thead>
@@ -264,6 +413,7 @@ export function Team({
           ))}
           {!bottlenecks.length && (
             <Empty
+              kind="complete"
               title="Nothing holding you back"
               description="No recorded listing tasks or dependencies are outstanding."
             />
@@ -275,7 +425,7 @@ export function Team({
             {data.activities.slice(0, 4).map((a) => (
               <div key={a.id}>
                 <span className="activity-dot">
-                  <Check size={13} />
+                  <Activity size={13} />
                 </span>
                 <div>
                   <h3>{a.title}</h3>

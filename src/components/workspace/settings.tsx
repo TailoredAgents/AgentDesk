@@ -10,7 +10,13 @@ import {
   AlertCircle,
 } from "lucide-react";
 import type { WorkspaceData, Agent } from "@/lib/types";
-import { Avatar, Modal, SectionTitle } from "../ui";
+import {
+  Avatar,
+  Modal,
+  SectionTitle,
+  AutoTextarea,
+  useDraftGuard,
+} from "../ui";
 import { request } from "./client-api";
 
 export function Settings({
@@ -30,7 +36,7 @@ export function Settings({
   onAgentChange: (id: string) => void;
   onClose: () => void;
   onUpdate: (d: WorkspaceData) => void;
-  notify: (m: string) => void;
+  notify: (m: string, tone?: "info" | "success" | "error") => void;
 }) {
   const [style, setStyle] = useState(agent.style),
     [saving, setSaving] = useState(false),
@@ -38,6 +44,8 @@ export function Settings({
     [confirmation, setConfirmation] = useState("");
   const mutating = useRef(false);
   const locked = saving || resetting;
+  const dirty = JSON.stringify(style) !== JSON.stringify(agent.style);
+  const guard = useDraftGuard(dirty);
   const save = async () => {
     if (mutating.current) return;
     mutating.current = true;
@@ -53,7 +61,7 @@ export function Settings({
       notify("Your communication preferences are saved.");
       onClose();
     } catch (e) {
-      notify((e as Error).message);
+      notify((e as Error).message, "error");
     } finally {
       mutating.current = false;
       setSaving(false);
@@ -79,7 +87,7 @@ export function Settings({
       );
       onClose();
     } catch (error) {
-      notify((error as Error).message);
+      notify((error as Error).message, "error");
     } finally {
       mutating.current = false;
       setResetting(false);
@@ -90,9 +98,10 @@ export function Settings({
       title="Make it feel like you."
       subtitle="Your voice. Your workspace. Your way of working."
       onClose={() => {
-        if (!locked) onClose();
+        if (!locked) guard.requestLeave(onClose);
       }}
     >
+      {guard.dialog}
       <div className="settings-body">
         <div className="settings-profile">
           <Avatar agent={agent} />
@@ -112,7 +121,10 @@ export function Settings({
             <select
               value={agent.id}
               disabled={locked}
-              onChange={(event) => onAgentChange(event.target.value)}
+              onChange={(event) => {
+                const id = event.target.value;
+                guard.requestLeave(() => onAgentChange(id));
+              }}
             >
               {data.agents.map((person) => (
                 <option key={person.id} value={person.id}>
@@ -170,72 +182,77 @@ export function Settings({
               ))}
             </select>
           </label>
-          <label>
-            Directness
-            <textarea
-              value={style.directness || ""}
-              maxLength={500}
-              rows={2}
-              placeholder="For example: lead with the next step; be clear without pressure."
-              onChange={(event) =>
-                setStyle({ ...style, directness: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            Greeting style
-            <textarea
-              value={style.greeting || ""}
-              maxLength={500}
-              rows={2}
-              placeholder="For example: Hi [first name], or no greeting in a short text."
-              onChange={(event) =>
-                setStyle({ ...style, greeting: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            Sign-off style
-            <textarea
-              value={style.signoff || ""}
-              maxLength={500}
-              rows={2}
-              placeholder="For example: Thanks, followed by my first name."
-              onChange={(event) =>
-                setStyle({ ...style, signoff: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            Preferred wording
-            <textarea
-              value={style.preferredWords || ""}
-              maxLength={500}
-              rows={2}
-              placeholder="Words and phrases that sound natural to you."
-              onChange={(event) =>
-                setStyle({ ...style, preferredWords: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            Words or phrases to avoid
-            <textarea
-              value={style.avoid}
-              maxLength={1500}
-              rows={2}
-              onChange={(e) => setStyle({ ...style, avoid: e.target.value })}
-            />
-          </label>
-          <label>
-            An approved example in your voice
-            <textarea
-              value={style.examples}
-              maxLength={4000}
-              rows={4}
-              onChange={(e) => setStyle({ ...style, examples: e.target.value })}
-            />
-          </label>
+          <details className="style-advanced">
+            <summary>Voice details & approved examples</summary>
+            <label>
+              Directness
+              <AutoTextarea
+                value={style.directness || ""}
+                maxLength={500}
+                rows={2}
+                placeholder="For example: lead with the next step; be clear without pressure."
+                onChange={(event) =>
+                  setStyle({ ...style, directness: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              Greeting style
+              <AutoTextarea
+                value={style.greeting || ""}
+                maxLength={500}
+                rows={2}
+                placeholder="For example: Hi [first name], or no greeting in a short text."
+                onChange={(event) =>
+                  setStyle({ ...style, greeting: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              Sign-off style
+              <AutoTextarea
+                value={style.signoff || ""}
+                maxLength={500}
+                rows={2}
+                placeholder="For example: Thanks, followed by my first name."
+                onChange={(event) =>
+                  setStyle({ ...style, signoff: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              Preferred wording
+              <AutoTextarea
+                value={style.preferredWords || ""}
+                maxLength={500}
+                rows={2}
+                placeholder="Words and phrases that sound natural to you."
+                onChange={(event) =>
+                  setStyle({ ...style, preferredWords: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              Words or phrases to avoid
+              <AutoTextarea
+                value={style.avoid}
+                maxLength={1500}
+                rows={2}
+                onChange={(e) => setStyle({ ...style, avoid: e.target.value })}
+              />
+            </label>
+            <label>
+              An approved example in your voice
+              <AutoTextarea
+                value={style.examples}
+                maxLength={4000}
+                rows={4}
+                onChange={(e) =>
+                  setStyle({ ...style, examples: e.target.value })
+                }
+              />
+            </label>
+          </details>
         </fieldset>
         <div className="role-preview">
           <div>
@@ -302,12 +319,28 @@ export function Settings({
             </button>
           </details>
         )}
-        <div className="modal-footer">
-          <a className="text-link" href="/login">
+        <div className="modal-footer sticky-actions">
+          <span className="save-status" role="status">
+            {dirty ? "Unsaved changes" : "Preferences up to date"}
+          </span>
+          <a
+            className="text-link"
+            href="/login"
+            onClick={(event) => {
+              if (dirty) {
+                event.preventDefault();
+                guard.requestLeave(() => window.location.assign("/login"));
+              }
+            }}
+          >
             Access & sign in
             <ArrowUpRight size={13} />
           </a>
-          <button className="button primary" onClick={save} disabled={locked}>
+          <button
+            className="button primary"
+            onClick={save}
+            disabled={locked || !dirty}
+          >
             {saving ? (
               <LoaderCircle size={16} className="spin" />
             ) : (

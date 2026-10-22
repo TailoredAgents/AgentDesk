@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { ArrowUpRight, ShieldCheck } from "lucide-react";
 import type { WorkspaceData, Client, Commitment, Task } from "@/lib/types";
 import { Badge, Modal, SectionTitle, shortDate, time } from "../ui";
@@ -31,8 +32,9 @@ export function ClientDetail({
   onTask: (item: Task) => void;
   onReview: (id: string) => void;
   onUpdate: (data: WorkspaceData) => void;
-  notify: (message: string) => void;
+  notify: (message: string, tone?: "info" | "success" | "error") => void;
 }) {
+  const [section, setSection] = useState("overview");
   if (!c) return null;
   const memory = (data.clientFacts ?? []).filter(
     (f) => f.agentId === c.agentId && f.clientId === c.id,
@@ -55,8 +57,11 @@ export function ClientDetail({
   const conversations = data.conversations.filter(
     (item) => item.clientId === c.id,
   );
+  const pendingReviews = packages.filter((p) => p.status === "pending").length;
   return (
     <Modal
+      wide
+      className="client-modal"
       title={c.name}
       subtitle={`${c.type} · ${data.agents.find((a) => a.id === c.agentId)?.name}`}
       onClose={onClose}
@@ -66,176 +71,214 @@ export function ClientDetail({
           <span>{c.email}</span>
           <span>{c.phone}</span>
         </div>
-        {data.properties
-          .filter((p) => p.clientId === c.id)
-          .map((p) => (
+        <div className="record-summary">
+          <Badge tone="blue">
+            {tasks.filter((t) => t.status === "open").length} open tasks
+          </Badge>
+          <Badge tone="amber">
+            {commitments.filter((item) => item.status === "open").length} open
+            commitments
+          </Badge>
+          <Badge>
+            {pendingReviews} {pendingReviews === 1 ? "review" : "reviews"}{" "}
+            pending
+          </Badge>
+        </div>
+        <nav className="segmented-nav record-nav" aria-label="Client sections">
+          {[
+            ["overview", "Overview"],
+            ["work", "Work & messages"],
+            ["history", "History"],
+          ].map(([id, label]) => (
             <button
-              className="source-property"
-              key={p.id}
-              onClick={() => onProperty(p.id)}
+              key={id}
+              aria-pressed={section === id}
+              onClick={() => setSection(id)}
             >
-              <img src={p.image} alt="" />
-              <span>
-                <strong>{p.address}</strong>
-                <small>{p.city}</small>
-              </span>
-              <ArrowUpRight size={15} />
+              {label}
             </button>
           ))}
-        <ClientIntelligence
-          data={data}
-          client={c}
-          onUpdate={onUpdate}
-          onReview={onReview}
-          notify={notify}
-        />
-        {appts.map((a) => (
-          <div className="client-briefing" key={a.id}>
-            <div className="eyebrow">APPOINTMENT BRIEFING</div>
-            <h3>{a.title}</h3>
-            {impacts.some(
-              (i) => i.kind === "appointment" && i.targetId === a.id,
-            ) && (
-              <Badge tone="amber">Briefing needs review after a change</Badge>
-            )}
-            <p>{a.briefing}</p>
-            <small>
-              {shortDate(a.startsAt)} · {time(a.startsAt)} · {a.status}
-            </small>
-            <AppointmentCalendar appointment={a} />
-            <WorkProducts
-              data={data}
-              onUpdate={onUpdate}
-              notify={notify}
-              filter={{ appointmentId: a.id }}
-              context={{
-                kind: "appointment_briefing",
-                agentId: a.agentId,
-                clientId: a.clientId,
-                propertyId: a.propertyId,
-                appointmentId: a.id,
-              }}
-              title="Prepared briefing"
-            />
-          </div>
-        ))}
-        <WorkProducts
-          data={data}
-          onUpdate={onUpdate}
-          notify={notify}
-          filter={{ clientId: c.id }}
-          title="Client work products"
-        />
-        {commitments.length > 0 && (
-          <>
-            <SectionTitle title="Commitments & unanswered questions" />
-            <CommitmentList
-              items={commitments}
-              onChange={onCommitment}
-              outdatedIds={impacts
-                .filter((i) => i.kind === "commitment")
-                .map((i) => i.targetId)}
-            />
-          </>
-        )}
-        {tasks.length > 0 && (
-          <>
-            <SectionTitle title="Recorded next steps" />
-            {tasks.map((task) => (
-              <TaskRow
-                key={task.id}
-                task={task}
-                data={data}
-                onToggle={() => onTask(task)}
-                onProperty={onProperty}
-                onUpdate={onUpdate}
-                notify={notify}
-              />
-            ))}
-          </>
-        )}
-        {packages.length > 0 && (
-          <>
-            <SectionTitle title="Conversations & review history" />
-            {packages.map((pkg) => (
+        </nav>
+        <div hidden={section !== "overview"}>
+          {data.properties
+            .filter((p) => p.clientId === c.id)
+            .map((p) => (
               <button
-                className="detail-conversation"
-                key={pkg.id}
-                onClick={() => onReview(pkg.id)}
+                className="source-property"
+                key={p.id}
+                onClick={() => onProperty(p.id)}
               >
-                <div>
-                  <strong>{pkg.title}</strong>
-                  <small>
-                    {pkg.origin === "sample"
-                      ? "Saved sample output"
-                      : pkg.origin === "human"
-                        ? "Human correction"
-                        : "OpenAI"}{" "}
-                    · {shortDate(pkg.createdAt)}
-                  </small>
-                </div>
-                <Badge tone={pkg.status === "pending" ? "blue" : "green"}>
-                  {pkg.status === "pending" ? "Decisions pending" : "Reviewed"}
-                </Badge>
+                <img src={p.image} alt="" />
+                <span>
+                  <strong>{p.address}</strong>
+                  <small>{p.city}</small>
+                </span>
                 <ArrowUpRight size={15} />
               </button>
             ))}
-          </>
-        )}
-        {conversations.length > 0 && (
-          <>
-            <SectionTitle title="Source history" />
-            {conversations.map((conversation) => (
-              <details className="source-evidence" key={conversation.id}>
-                <summary>
-                  {conversation.title} · {shortDate(conversation.createdAt)}
-                </summary>
-                <small>
-                  {conversation.source === "followup"
-                    ? "Workspace evidence snapshot"
-                    : conversation.source === "sample"
-                      ? "Saved fictional conversation"
-                      : "Authorized conversation source"}
-                </small>
-                <p>{conversation.transcript}</p>
-              </details>
-            ))}
-          </>
-        )}
-        <SectionTitle title="Recorded relationship notes" />
-        {c.notes.length ? (
-          c.notes.map((n, i) => (
-            <p className="saved-note" key={i}>
-              {currentContextText(n, memory) !== n && (
-                <Badge tone="amber">
-                  Includes earlier information · see current situation above
-                </Badge>
+          <ClientIntelligence
+            data={data}
+            client={c}
+            onUpdate={onUpdate}
+            onReview={onReview}
+            notify={notify}
+          />
+        </div>
+        <div hidden={section !== "work"}>
+          {appts.map((a) => (
+            <div className="client-briefing" key={a.id}>
+              <div className="eyebrow">APPOINTMENT BRIEFING</div>
+              <h3>{a.title}</h3>
+              {impacts.some(
+                (i) => i.kind === "appointment" && i.targetId === a.id,
+              ) && (
+                <Badge tone="amber">Briefing needs review after a change</Badge>
               )}
-              {n}
-            </p>
-          ))
-        ) : (
-          <p className="muted">Approved conversation notes will appear here.</p>
-        )}
-        {messages.length > 0 && (
-          <>
-            <SectionTitle title="Approved message drafts" />
-            {messages.map((m) => (
-              <div className="saved-message" key={m.id}>
-                <Badge tone="blue">Approved · not sent</Badge>
-                {impacts.some(
-                  (i) => i.kind === "message" && i.targetId === m.id,
-                ) && (
-                  <p className="intelligence-warning">
-                    Earlier plan · review the updated draft before use.
-                  </p>
+              <p>{a.briefing}</p>
+              <small>
+                {shortDate(a.startsAt)} · {time(a.startsAt)} · {a.status}
+              </small>
+              <AppointmentCalendar appointment={a} />
+              <WorkProducts
+                data={data}
+                onUpdate={onUpdate}
+                notify={notify}
+                filter={{ appointmentId: a.id }}
+                context={{
+                  kind: "appointment_briefing",
+                  agentId: a.agentId,
+                  clientId: a.clientId,
+                  propertyId: a.propertyId,
+                  appointmentId: a.id,
+                }}
+                title="Prepared briefing"
+              />
+            </div>
+          ))}
+          <WorkProducts
+            data={data}
+            onUpdate={onUpdate}
+            notify={notify}
+            filter={{ clientId: c.id }}
+            title="Client work products"
+          />
+          {commitments.length > 0 && (
+            <>
+              <SectionTitle title="Commitments & unanswered questions" />
+              <CommitmentList
+                items={commitments}
+                onChange={onCommitment}
+                outdatedIds={impacts
+                  .filter((i) => i.kind === "commitment")
+                  .map((i) => i.targetId)}
+              />
+            </>
+          )}
+          {tasks.length > 0 && (
+            <>
+              <SectionTitle title="Recorded next steps" />
+              {tasks.map((task) => (
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  data={data}
+                  onToggle={() => onTask(task)}
+                  onProperty={onProperty}
+                  onUpdate={onUpdate}
+                  notify={notify}
+                />
+              ))}
+            </>
+          )}
+          {messages.length > 0 && (
+            <>
+              <SectionTitle title="Approved message drafts" />
+              {messages.map((m) => (
+                <div className="saved-message" key={m.id}>
+                  <Badge tone="blue">Approved · not sent</Badge>
+                  {impacts.some(
+                    (i) => i.kind === "message" && i.targetId === m.id,
+                  ) && (
+                    <p className="intelligence-warning">
+                      Earlier plan · review the updated draft before use.
+                    </p>
+                  )}
+                  <p>{m.body}</p>
+                  <MessageActions body={m.body} notify={notify} />
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+        <div hidden={section !== "history"}>
+          {packages.length > 0 && (
+            <>
+              <SectionTitle title="Conversations & review history" />
+              {packages.map((pkg) => (
+                <button
+                  className="detail-conversation"
+                  key={pkg.id}
+                  onClick={() => onReview(pkg.id)}
+                >
+                  <div>
+                    <strong>{pkg.title}</strong>
+                    <small>
+                      {pkg.origin === "sample"
+                        ? "Saved sample output"
+                        : pkg.origin === "human"
+                          ? "Human correction"
+                          : "OpenAI"}{" "}
+                      · {shortDate(pkg.createdAt)}
+                    </small>
+                  </div>
+                  <Badge tone={pkg.status === "pending" ? "blue" : "green"}>
+                    {pkg.status === "pending"
+                      ? "Decisions pending"
+                      : "Reviewed"}
+                  </Badge>
+                  <ArrowUpRight size={15} />
+                </button>
+              ))}
+            </>
+          )}
+          {conversations.length > 0 && (
+            <>
+              <SectionTitle title="Source history" />
+              {conversations.map((conversation) => (
+                <details className="source-evidence" key={conversation.id}>
+                  <summary>
+                    {conversation.title} · {shortDate(conversation.createdAt)}
+                  </summary>
+                  <small>
+                    {conversation.source === "followup"
+                      ? "Workspace evidence snapshot"
+                      : conversation.source === "sample"
+                        ? "Saved fictional conversation"
+                        : "Authorized conversation source"}
+                  </small>
+                  <p>{conversation.transcript}</p>
+                </details>
+              ))}
+            </>
+          )}
+          <SectionTitle title="Recorded relationship notes" />
+          {c.notes.length ? (
+            c.notes.map((n, i) => (
+              <p className="saved-note" key={i}>
+                {currentContextText(n, memory) !== n && (
+                  <Badge tone="amber">
+                    Includes earlier information · see current situation above
+                  </Badge>
                 )}
-                <p>{m.body}</p>
-                <MessageActions body={m.body} notify={notify} />
-              </div>
-            ))}
-          </>
-        )}
+                {n}
+              </p>
+            ))
+          ) : (
+            <p className="muted">
+              Approved conversation notes will appear here.
+            </p>
+          )}
+        </div>
         <div className="info-strip">
           <ShieldCheck size={17} />
           <p>

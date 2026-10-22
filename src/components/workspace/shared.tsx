@@ -48,14 +48,18 @@ export function TaskRow({
             task.detail
           )}
         </p>
-        {onUpdate && notify && (
-          <TaskCalendar
-            task={task}
-            data={data}
-            onUpdate={onUpdate}
-            notify={notify}
-          />
-        )}
+        <details className="task-extra">
+          <summary>Details & calendar</summary>
+          {p && <p>{task.detail}</p>}
+          {onUpdate && notify && (
+            <TaskCalendar
+              task={task}
+              data={data}
+              onUpdate={onUpdate}
+              notify={notify}
+            />
+          )}
+        </details>
       </div>
       <div className="task-meta">
         {task.priority === "high" && task.status !== "done" && (

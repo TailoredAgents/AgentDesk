@@ -4065,151 +4065,6 @@ button:not(:disabled):active {
   }
 }
 
-/* Working text stays readable; quieter metadata supports rather than competes. */
-.nav-item {
-  font-size: 14px;
-}
-.workforce-nav button {
-  font-size: 12px;
-}
-.workspace-switch strong {
-  font-size: 11px;
-}
-.workspace-switch small {
-  font-size: 10px;
-}
-.sidebar-bottom .nav-item {
-  font-size: 12px;
-}
-.page-heading p {
-  color: #77828e;
-}
-.section-heading h2 {
-  font-size: 16px;
-}
-.task-row h3 {
-  font-size: 13px;
-}
-.task-row p {
-  color: #86929b;
-  font-size: 11px;
-}
-.task-meta {
-  color: #87939f;
-}
-.priority-body strong {
-  font-size: 13px;
-}
-.priority-body small {
-  line-height: 1.7;
-}
-.briefing-copy > p {
-  font-size: 13px;
-}
-.briefing-copy h2 {
-  max-width: 470px;
-  font-size: 30px;
-}
-.appointment-content h3 {
-  font-size: 13px;
-}
-.appointment-content > p {
-  color: #85919d;
-}
-.appointment-content > button {
-  font-size: 11px;
-}
-.transcript,
-.facts-list p {
-  font-size: 13px;
-  color: #66758a;
-}
-.action-card textarea,
-.approved-content {
-  font-size: 13px;
-  color: #65768b;
-  line-height: 1.85;
-}
-.action-card textarea {
-  field-sizing: content;
-  resize: vertical;
-  min-height: 60px;
-  max-height: 420px;
-}
-.action-card h3 {
-  font-size: 14px;
-}
-.actions-help {
-  color: #8492a3;
-  font-size: 11px;
-}
-.actions-intro h2 {
-  font-size: 19px;
-}
-.draft-note {
-  color: #7e8fa4;
-}
-.source-evidence {
-  color: #8696a9;
-}
-.facts-list blockquote {
-  color: #8895a6;
-}
-.clarification p {
-  color: #927d55;
-}
-.clarification h3 {
-  color: #927136;
-}
-.keep-toggle {
-  font-size: 10px;
-}
-.milestone-track .complete > span {
-  background: #eaf2ec;
-  border-color: #c9ddcf;
-  color: #81a18a;
-}
-.milestone-track .complete strong {
-  color: #83968a;
-}
-.listing-card-title h2 {
-  font-size: 16px;
-}
-.listing-next {
-  font-size: 11px;
-}
-.team-table th {
-  font-size: 10px;
-}
-.team-person strong {
-  font-size: 13px;
-}
-.team-person small {
-  font-size: 11px;
-}
-.team-table td {
-  font-size: 13px;
-}
-.review-table-link,
-.caught-up,
-.prepared-count {
-  font-size: 11px;
-}
-.team-briefing p {
-  font-size: 12px;
-}
-.bottleneck h3 {
-  font-size: 13px;
-}
-.bottleneck p {
-  font-size: 11px;
-}
-.activity-list h3 {
-  font-size: 12px;
-}
-.activity-list p {
-  font-size: 11px;
-}
 @media (min-width: 1001px) {
   .source-panel {
     position: sticky;
@@ -4593,54 +4448,254 @@ button:not(:disabled):active {
 }
 
 /* Work products and calendar actions share the existing workspace controls. */
-.work-products-section { margin: 25px 0; }
-.work-products-section .section-heading { gap: 12px; flex-wrap: wrap; }
-.work-products-section .text-link { font-size: 11px; }
-.work-product-row { width: 100%; display: flex; align-items: center; gap: 12px; padding: 15px 0; text-align: left; border-bottom: 1px solid #e8edf4; color: #75869e; }
-.work-product-row > span:nth-child(2) { flex: 1; min-width: 0; }
-.work-product-row strong { display: block; color: #50627c; font-size: 13px; font-weight: 500; line-height: 1.6; }
-.work-product-row small { display: block; font-size: 10px; line-height: 1.8; margin-top: 3px; }
-.work-product-icon { width: 38px; height: 42px; border-radius: 7px; background: #edf3fa; color: #6985ad; display: grid; place-items: center; flex-shrink: 0; }
-.work-product-row .badge { flex-shrink: 0; }
-.work-product-note { font-size: 11px; color: #8291a5; line-height: 1.8; margin: 12px 0; }
-.work-product-editor, .calendar-editor { padding: 25px 28px; }
-.product-version-toolbar, .product-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.product-version-toolbar label { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #7f8ca1; margin-right: auto; }
-.product-version-toolbar select { font-size: 12px; color: #667b97; border: 1px solid #dce5ef; padding: 8px; border-radius: 5px; background: #fff; }
-.product-edit-fields { display: grid; gap: 15px; margin: 23px 0; }
-.product-edit-fields label, .calendar-fields label { display: flex; flex-direction: column; gap: 8px; color: #7c8ba1; font-size: 12px; }
-.product-edit-fields input, .product-edit-fields textarea, .product-item textarea, .product-section-title, .calendar-fields input, .copy-fallback textarea { width: 100%; border: 1px solid #e0e6ef; padding: 10px 12px; color: #62758e; border-radius: 5px; font-size: 13px; line-height: 1.8; background: #fff; }
-.product-edit-fields textarea, .product-item textarea, .copy-fallback textarea { resize: vertical; }
-.product-document-title { font-size: 24px; font-weight: 500; color: #405c7a; margin: 24px 0 12px; }
-.product-introduction { font-size: 13px; line-height: 1.9; color: #77879d; white-space: pre-wrap; }
-.product-section { border-top: 1px solid #e7edf4; margin-top: 24px; padding-top: 20px; }
-.product-section-title { display: block; margin-top: 10px; font-weight: 500; }
-.product-section h3 { margin: 11px 0; font-size: 16px; font-weight: 500; color: #526b85; }
-.product-item { margin-top: 15px; }
-.product-item-label { display: block; text-transform: uppercase; letter-spacing: .65px; color: #8495a8; font-size: 9px; margin-bottom: 6px; }
-.product-item > p { font-size: 13px; line-height: 1.9; color: #73849c; white-space: pre-wrap; }
-.product-source-history { margin-top: 27px; font-size: 12px; line-height: 1.8; }
-.product-source-history details { margin: 12px 0; }
-.product-source-history ul { padding-left: 20px; }
-.product-source-history p { white-space: pre-wrap; }
-.product-actions { margin-top: 19px; }
-.product-actions .button { font-size: 12px; }
-.product-version-actions { border-top: 1px solid #e9edf3; padding-top: 20px; }
-.calendar-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
-.calendar-editor > .button { margin-top: 20px; }
-.calendar-editor .review-effects-preview .text-link { display: block; margin-top: 10px; }
-.calendar-download { font-size: 11px; margin-top: 12px; }
-.task-calendar-trigger { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; color: #8095b0; margin-top: 8px; }
-.message-actions > small { display: block; font-size: 10px; line-height: 1.8; color: #8c99aa; margin-top: 7px; }
-.copy-fallback { display: block; margin-top: 12px; font-size: 11px; color: #7e8fa6; }
-.copy-fallback textarea { margin-top: 7px; }
+.work-products-section {
+  margin: 25px 0;
+}
+.work-products-section .section-heading {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.work-products-section .text-link {
+  font-size: 11px;
+}
+.work-product-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 0;
+  text-align: left;
+  border-bottom: 1px solid #e8edf4;
+  color: #75869e;
+}
+.work-product-row > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+.work-product-row strong {
+  display: block;
+  color: #50627c;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+}
+.work-product-row small {
+  display: block;
+  font-size: 10px;
+  line-height: 1.8;
+  margin-top: 3px;
+}
+.work-product-icon {
+  width: 38px;
+  height: 42px;
+  border-radius: 7px;
+  background: #edf3fa;
+  color: #6985ad;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.work-product-row .badge {
+  flex-shrink: 0;
+}
+.work-product-note {
+  font-size: 11px;
+  color: #8291a5;
+  line-height: 1.8;
+  margin: 12px 0;
+}
+.work-product-editor,
+.calendar-editor {
+  padding: 25px 28px;
+}
+.product-version-toolbar,
+.product-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.product-version-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: #7f8ca1;
+  margin-right: auto;
+}
+.product-version-toolbar select {
+  font-size: 12px;
+  color: #667b97;
+  border: 1px solid #dce5ef;
+  padding: 8px;
+  border-radius: 5px;
+  background: #fff;
+}
+.product-edit-fields {
+  display: grid;
+  gap: 15px;
+  margin: 23px 0;
+}
+.product-edit-fields label,
+.calendar-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #7c8ba1;
+  font-size: 12px;
+}
+.product-edit-fields input,
+.product-edit-fields textarea,
+.product-item textarea,
+.product-section-title,
+.calendar-fields input,
+.copy-fallback textarea {
+  width: 100%;
+  border: 1px solid #e0e6ef;
+  padding: 10px 12px;
+  color: #62758e;
+  border-radius: 5px;
+  font-size: 13px;
+  line-height: 1.8;
+  background: #fff;
+}
+.product-edit-fields textarea,
+.product-item textarea,
+.copy-fallback textarea {
+  resize: vertical;
+}
+.product-document-title {
+  font-size: 24px;
+  font-weight: 500;
+  color: #405c7a;
+  margin: 24px 0 12px;
+}
+.product-introduction {
+  font-size: 13px;
+  line-height: 1.9;
+  color: #77879d;
+  white-space: pre-wrap;
+}
+.product-section {
+  border-top: 1px solid #e7edf4;
+  margin-top: 24px;
+  padding-top: 20px;
+}
+.product-section-title {
+  display: block;
+  margin-top: 10px;
+  font-weight: 500;
+}
+.product-section h3 {
+  margin: 11px 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: #526b85;
+}
+.product-item {
+  margin-top: 15px;
+}
+.product-item-label {
+  display: block;
+  text-transform: uppercase;
+  letter-spacing: 0.65px;
+  color: #8495a8;
+  font-size: 9px;
+  margin-bottom: 6px;
+}
+.product-item > p {
+  font-size: 13px;
+  line-height: 1.9;
+  color: #73849c;
+  white-space: pre-wrap;
+}
+.product-source-history {
+  margin-top: 27px;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.product-source-history details {
+  margin: 12px 0;
+}
+.product-source-history ul {
+  padding-left: 20px;
+}
+.product-source-history p {
+  white-space: pre-wrap;
+}
+.product-actions {
+  margin-top: 19px;
+}
+.product-actions .button {
+  font-size: 12px;
+}
+.product-version-actions {
+  border-top: 1px solid #e9edf3;
+  padding-top: 20px;
+}
+.calendar-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 20px 0;
+}
+.calendar-editor > .button {
+  margin-top: 20px;
+}
+.calendar-editor .review-effects-preview .text-link {
+  display: block;
+  margin-top: 10px;
+}
+.calendar-download {
+  font-size: 11px;
+  margin-top: 12px;
+}
+.task-calendar-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: #8095b0;
+  margin-top: 8px;
+}
+.message-actions > small {
+  display: block;
+  font-size: 10px;
+  line-height: 1.8;
+  color: #8c99aa;
+  margin-top: 7px;
+}
+.copy-fallback {
+  display: block;
+  margin-top: 12px;
+  font-size: 11px;
+  color: #7e8fa6;
+}
+.copy-fallback textarea {
+  margin-top: 7px;
+}
 @media (max-width: 650px) {
-  .work-product-editor, .calendar-editor { padding: 20px 18px; }
-  .work-product-row { flex-wrap: wrap; gap: 8px; }
-  .work-product-row > span:nth-child(2) { min-width: 65%; }
-  .work-product-row > .badge { margin-left: 46px; }
-  .calendar-fields { grid-template-columns: 1fr; }
-  .product-actions .button { flex: 1 1 auto; justify-content: center; }
+  .work-product-editor,
+  .calendar-editor {
+    padding: 20px 18px;
+  }
+  .work-product-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .work-product-row > span:nth-child(2) {
+    min-width: 65%;
+  }
+  .work-product-row > .badge {
+    margin-left: 46px;
+  }
+  .calendar-fields {
+    grid-template-columns: 1fr;
+  }
+  .product-actions .button {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
 }
 
 /* Relationship intelligence extends the existing cards and typography. */

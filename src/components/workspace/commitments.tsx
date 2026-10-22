@@ -1,6 +1,7 @@
 "use client";
 
 import type { Commitment } from "@/lib/types";
+import { CircleHelp, Handshake, Link2 } from "lucide-react";
 import { Badge, shortDate } from "../ui";
 
 export function CommitmentList({
@@ -17,6 +18,13 @@ export function CommitmentList({
       {items.map((item) => (
         <div className="saved-note" key={item.id}>
           <Badge tone={item.status === "resolved" ? "green" : "amber"}>
+            {item.kind === "question" ? (
+              <CircleHelp size={13} />
+            ) : item.kind === "dependency" ? (
+              <Link2 size={13} />
+            ) : (
+              <Handshake size={13} />
+            )}
             {item.status} · {item.kind.replace("_", " ")}
           </Badge>
           <h3>{item.title}</h3>
@@ -27,7 +35,12 @@ export function CommitmentList({
             </p>
           )}
           <p>{item.detail}</p>
-          {item.sourceQuote && <blockquote>“{item.sourceQuote}”</blockquote>}
+          {item.sourceQuote && (
+            <details className="source-evidence">
+              <summary>Source evidence</summary>
+              <blockquote>“{item.sourceQuote}”</blockquote>
+            </details>
+          )}
           <p className="small-text muted">
             {item.dueDate
               ? `Due ${shortDate(item.dueDate)}`

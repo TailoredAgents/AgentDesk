@@ -64,6 +64,7 @@ export function Listings({
           {stages.map((s) => (
             <button
               key={s}
+              aria-pressed={filter === s}
               className={filter === s ? "active" : ""}
               onClick={() => setFilter(s)}
             >
@@ -159,6 +160,18 @@ export function Listings({
       </div>
       {!filtered.length && (
         <Empty
+          kind="search"
+          action={
+            <button
+              className="button secondary"
+              onClick={() => {
+                setQuery("");
+                setFilter("All properties");
+              }}
+            >
+              Clear filters
+            </button>
+          }
           title="No homes found"
           description="Try a different address or stage."
         />

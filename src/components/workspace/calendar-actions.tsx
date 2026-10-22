@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { CalendarDays, Download, LoaderCircle } from "lucide-react";
 import type { Task, Appointment, WorkspaceData } from "@/lib/types";
 import { Modal } from "../ui";
@@ -68,7 +68,7 @@ export function TaskCalendar({
   task: Task;
   data: WorkspaceData;
   onUpdate: (data: WorkspaceData) => void;
-  notify: (message: string) => void;
+  notify: (message: string, tone?: "info" | "success" | "error") => void;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -105,9 +105,11 @@ function ScheduleEditor({
   task: Task;
   data: WorkspaceData;
   onUpdate: (data: WorkspaceData) => void;
-  notify: (message: string) => void;
+  notify: (message: string, tone?: "info" | "success" | "error") => void;
   onClose: () => void;
 }) {
+  const zoneListId = useId();
+  const zones = Intl.supportedValuesOf("timeZone");
   const [initial] = useState(() => scheduleFields(task));
   const [date, setDate] = useState(initial.date);
   const [startTime, setStart] = useState(initial.startTime);
@@ -227,6 +229,7 @@ function ScheduleEditor({
               <label>
                 Time zone
                 <input
+                  list={zoneListId}
                   value={timeZone}
                   maxLength={80}
                   disabled={busy}
@@ -234,8 +237,15 @@ function ScheduleEditor({
                     setZone(event.target.value);
                     setConfirmed(false);
                   }}
-                  placeholder="America/New_York"
+                  placeholder="Choose or search a time zone"
                 />
+                <datalist id={zoneListId}>
+                  {[...new Set([initial.timeZone, ...zones])].map((zone) => (
+                    <option key={zone} value={zone}>
+                      {zone.replaceAll("_", " ").replaceAll("/", " · ")}
+                    </option>
+                  ))}
+                </datalist>
               </label>
               <label>
                 Start time
@@ -262,6 +272,21 @@ function ScheduleEditor({
                 />
               </label>
             </div>
+            {date && startTime && endTime && (
+              <div className="schedule-preview">
+                <strong>Schedule to confirm</strong>
+                <p>
+                  {new Date(`${date}T12:00:00`).toLocaleDateString("en-US", {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                  })}{" "}
+                  · {startTime}–{endTime}
+                  <br />
+                  {timeZone.replaceAll("_", " ").replaceAll("/", " · ")}
+                </p>
+              </div>
+            )}
             <label className="consent">
               <input
                 type="checkbox"
@@ -307,10 +332,6 @@ function ScheduleEditor({
             {error}
           </div>
         )}
-        <p className="work-product-note">
-          Downloading does not establish that an external calendar event was
-          saved. Calendar connections are not active.
-        </p>
       </div>
     </Modal>
   );

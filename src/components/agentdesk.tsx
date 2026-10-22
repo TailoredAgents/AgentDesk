@@ -15,7 +15,12 @@ import {
   Link2,
   ShieldCheck,
   X,
-  CheckCircle2,
+  Info,
+  AlertCircle,
+  Mail,
+  CalendarDays,
+  Phone,
+  Database,
   Settings2,
 } from "lucide-react";
 import type { WorkspaceData, Task, Commitment } from "@/lib/types";
@@ -40,6 +45,7 @@ import { Capture } from "./workspace/capture";
 import { Settings } from "./workspace/settings";
 import { SearchPanel } from "./workspace/search-panel";
 import { request } from "./workspace/client-api";
+import { ActivityFeed } from "./workspace/activity-feed";
 import { FollowUp } from "./workspace/follow-up";
 
 const viewNames: Record<View, string> = {
@@ -70,7 +76,10 @@ export default function AgentDesk() {
     [view, setView] = useState<View>("today"),
     [panel, setPanel] = useState<Panel>(null),
     [mobile, setMobile] = useState(false),
-    [toast, setToast] = useState(""),
+    [toast, setToast] = useState<{
+      message: string;
+      tone: "info" | "success" | "error";
+    } | null>(null),
     [selectedPackage, setSelectedPackage] = useState<string | null>(null),
     [property, setProperty] = useState<string | null>(null),
     [client, setClient] = useState<string | null>(null),
@@ -78,6 +87,13 @@ export default function AgentDesk() {
     [agentId, setAgentId] = useState<string | null>(null),
     [followUpId, setFollowUpId] = useState<string | null>(null),
     [preparing, setPreparing] = useState(false);
+  const [workforceRole, setWorkforceRole] = useState<number | null>(null);
+  const [searchShortcut, setSearchShortcut] = useState("Ctrl K");
+  useEffect(() => {
+    setSearchShortcut(
+      /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘ K" : "Ctrl K",
+    );
+  }, []);
   const applyData = useCallback((incoming: WorkspaceData) => {
     setData((current) =>
       !current ||
@@ -137,8 +153,8 @@ export default function AgentDesk() {
     return () => window.removeEventListener("popstate", read);
   }, [refresh]);
   useEffect(() => {
-    if (!toast) return;
-    const id = setTimeout(() => setToast(""), 5500);
+    if (!toast || toast.tone === "error") return;
+    const id = setTimeout(() => setToast(null), 6500);
     return () => clearTimeout(id);
   }, [toast]);
   useEffect(() => {
@@ -185,7 +201,10 @@ export default function AgentDesk() {
       /* storage is optional */
     }
   };
-  const notify = (message: string) => setToast(message);
+  const notify = (
+    message: string,
+    tone: "info" | "success" | "error" = "info",
+  ) => setToast({ message, tone });
   const prepareFollowUps = async (id?: string) => {
     if (!data || preparing) return;
     setPreparing(true);
@@ -205,7 +224,7 @@ export default function AgentDesk() {
       );
     } catch (e) {
       await refresh();
-      notify((e as Error).message);
+      notify((e as Error).message, "error");
     } finally {
       setPreparing(false);
     }
@@ -223,7 +242,7 @@ export default function AgentDesk() {
           : "Commitment reopened.",
       );
     } catch (e) {
-      notify((e as Error).message);
+      notify((e as Error).message, "error");
     }
   };
   const toggleTask = async (task: Task) => {
@@ -239,7 +258,7 @@ export default function AgentDesk() {
           : "One less thing on your list.",
       );
     } catch (e) {
-      notify((e as Error).message);
+      notify((e as Error).message, "error");
     }
   };
   if (!data)
@@ -333,7 +352,13 @@ export default function AgentDesk() {
         </div>
         <div className="workforce-nav">
           {workforce.map((a, i) => (
-            <button key={a.name} onClick={() => setPanel("workforce")}>
+            <button
+              key={a.name}
+              onClick={() => {
+                setWorkforceRole(i);
+                setPanel("workforce");
+              }}
+            >
               <AssistantIcon index={i} small />
               <span>{a.name}</span>
             </button>
@@ -349,6 +374,13 @@ export default function AgentDesk() {
             </p>
             <span className="note-line" />
           </div>
+          <button
+            className="nav-item mobile-activity"
+            onClick={() => setPanel("activity")}
+          >
+            <Activity size={18} />
+            Activity history
+          </button>
           <button className="nav-item" onClick={() => setPanel("integrations")}>
             <Link2 size={18} />
             Connections
@@ -403,7 +435,7 @@ export default function AgentDesk() {
             >
               <Search size={16} />
               <span>Search anything</span>
-              <kbd>⌘ K</kbd>
+              <kbd>{searchShortcut}</kbd>
             </button>
             <button
               className="icon-button activity-trigger"
@@ -428,7 +460,10 @@ export default function AgentDesk() {
               onClient={setClient}
               onTask={toggleTask}
               onView={navigate}
-              onWorkforce={() => setPanel("workforce")}
+              onWorkforce={() => {
+                setWorkforceRole(null);
+                setPanel("workforce");
+              }}
               onFollowUp={setFollowUpId}
               onRefresh={() => prepareFollowUps()}
               refreshing={preparing}
@@ -470,12 +505,19 @@ export default function AgentDesk() {
         </main>
       </div>
       {toast && (
-        <div role="status" className="toast">
-          <CheckCircle2 size={18} />
-          <span>{toast}</span>
+        <div
+          role={toast.tone === "error" ? "alert" : "status"}
+          className={`toast ${toast.tone}`}
+        >
+          {toast.tone === "error" ? (
+            <AlertCircle size={18} />
+          ) : (
+            <Info size={18} />
+          )}
+          <span>{toast.message}</span>
           <button
             aria-label="Dismiss notification"
-            onClick={() => setToast("")}
+            onClick={() => setToast(null)}
           >
             <X size={15} />
           </button>
@@ -501,16 +543,46 @@ export default function AgentDesk() {
         <Modal
           title="Five specialists. One shared context."
           subtitle="A coordinated workforce, with you at the center."
+          initialFocus={
+            workforceRole === null ? undefined : "[data-active-role]"
+          }
           onClose={close}
           wide
         >
           <div className="workforce-modal">
             {workforce.map((a, i) => (
-              <div key={a.name}>
+              <div
+                className={`workforce-role ${workforceRole === i ? "selected" : ""}`}
+                data-active-role={workforceRole === i ? true : undefined}
+                tabIndex={-1}
+                key={a.name}
+              >
                 <AssistantIcon index={i} />
                 <div>
                   <h3>{a.name}</h3>
                   <p>{a.description}</p>
+                  <button
+                    className="text-link"
+                    onClick={() => {
+                      close();
+                      if (i === 1) setPanel("capture");
+                      else
+                        navigate(
+                          i === 3 ? "listings" : i === 4 ? "team" : "today",
+                        );
+                    }}
+                  >
+                    {
+                      [
+                        "Open Today",
+                        "Add a conversation",
+                        "Open follow-ups on Today",
+                        "Open listings",
+                        "Open Team",
+                      ][i]
+                    }{" "}
+                    <ChevronRight size={14} />
+                  </button>
                 </div>
                 <Badge tone={i === 0 || i === 4 ? "neutral" : "blue"}>
                   {i === 0 || i === 4 ? "Record-based" : "AI-assisted"}
@@ -534,8 +606,8 @@ export default function AgentDesk() {
       )}
       {panel === "integrations" && (
         <Modal
-          title="Connected to your way of working."
-          subtitle="A home for the work around your CRM."
+          title="Your connections, next."
+          subtitle="Provider integrations planned for a future release."
           onClose={close}
         >
           <div className="connections-list">
@@ -543,31 +615,33 @@ export default function AgentDesk() {
               {
                 name: "Lofty",
                 type: "CRM · client records and notes",
-                mark: "L",
+                icon: Database,
               },
               {
                 name: "Google Workspace",
                 type: "Gmail and Google Calendar",
-                mark: "G",
+                icon: CalendarDays,
               },
               {
                 name: "Microsoft 365",
                 type: "Outlook and Microsoft Calendar",
-                mark: "M",
+                icon: Mail,
               },
               {
                 name: "Communications",
                 type: "Phone, messaging, and call recordings",
-                mark: "C",
+                icon: Phone,
               },
             ].map((c) => (
               <div key={c.name}>
-                <span className="connection-mark">{c.mark}</span>
+                <span className="connection-mark">
+                  <c.icon size={22} />
+                </span>
                 <div>
                   <h3>{c.name}</h3>
                   <p>{c.type}</p>
                 </div>
-                <Badge>Not connected</Badge>
+                <Badge>Planned</Badge>
               </div>
             ))}
             <div className="info-strip">
@@ -587,27 +661,18 @@ export default function AgentDesk() {
           subtitle="A persistent history of your workspace."
           onClose={close}
         >
-          <div className="activity-list modal-activity">
-            {data.activities.map((a) => (
-              <div key={a.id}>
-                <span className="activity-dot">
-                  <Check size={13} />
-                </span>
-                <div>
-                  <h3>{a.title}</h3>
-                  <p>{a.detail}</p>
-                  <small>
-                    {shortDate(a.createdAt)} · {time(a.createdAt)}
-                  </small>
-                </div>
-              </div>
-            ))}
-            {!data.activities.length && (
-              <Empty
-                title="A fresh start"
-                description="Completed work will appear here."
-              />
-            )}
+          <div className="modal-activity">
+            <ActivityFeed
+              items={data.activities}
+              onClient={(id) => {
+                close();
+                setClient(id);
+              }}
+              onProperty={(id) => {
+                close();
+                setProperty(id);
+              }}
+            />
           </div>
         </Modal>
       )}

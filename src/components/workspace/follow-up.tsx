@@ -38,6 +38,7 @@ export function FollowUp({
     <Modal
       title={`${client.name} — ${item.title}`}
       subtitle="Relationship Assistant · grounded in your saved workspace"
+      wide
       onClose={onClose}
     >
       <div className="client-detail">
@@ -49,58 +50,16 @@ export function FollowUp({
         </Badge>
         <div className="client-briefing">
           <h3>Why this needs attention</h3>
-          <p>{item.reason}</p>
+          <p>
+            {item.reason.replace(/\b\d{4}-\d{2}-\d{2}\b/g, (date) =>
+              shortDate(date),
+            )}
+          </p>
           <small>
             Based on {shortDate(data.workspace.referenceDate)} in this fictional
             workspace.
           </small>
         </div>
-        <SectionTitle title="The evidence behind the recommendation" />
-        {item.evidence.map((evidence, index) => (
-          <p className="saved-note" key={index}>
-            {currentContextText(evidence, memory) !== evidence && (
-              <Badge tone="amber">
-                Includes an earlier plan · see reviewed context below
-              </Badge>
-            )}
-            {evidence}
-          </p>
-        ))}
-        {item.uncertainties.length > 0 && (
-          <div className="clarifications">
-            <h3>Still to confirm</h3>
-            <ul>
-              {item.uncertainties.map((value) => (
-                <li key={value}>{value}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-        <SectionTitle title="Context that shapes the message" />
-        <p className="saved-note">
-          {client.notes.length
-            ? client.notes
-                .map((note) => currentContextText(note, memory))
-                .filter(Boolean)
-                .join(" ")
-            : "No additional client preferences are recorded."}
-        </p>
-        {currentFacts(data, item).map((f) => (
-          <p className="saved-note" key={f.id}>
-            <Badge tone={f.certainty === "confirmed" ? "green" : "amber"}>
-              {f.certainty}
-            </Badge>{" "}
-            {f.value}
-          </p>
-        ))}
-        <TextLink onClick={() => onClient(client.id)}>
-          Open client record & commitments
-        </TextLink>
-        {property && (
-          <TextLink onClick={() => onProperty(property.id)}>
-            Open {property.address}
-          </TextLink>
-        )}
         {pkg ? (
           <div className="client-briefing">
             <Badge tone={pkg.origin === "sample" ? "neutral" : "blue"}>
@@ -146,6 +105,55 @@ export function FollowUp({
             </button>
           </div>
         )}
+        {item.uncertainties.length > 0 && (
+          <div className="clarifications">
+            <h3>Still to confirm</h3>
+            <ul>
+              {item.uncertainties.map((value) => (
+                <li key={value}>{value}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <details className="context-disclosure">
+          <summary>Evidence & relationship context</summary>
+          <SectionTitle title="The evidence behind the recommendation" />
+          {item.evidence.map((evidence, index) => (
+            <p className="saved-note" key={index}>
+              {currentContextText(evidence, memory) !== evidence && (
+                <Badge tone="amber">
+                  Includes an earlier plan · see reviewed context below
+                </Badge>
+              )}
+              {evidence}
+            </p>
+          ))}
+          <SectionTitle title="Context that shapes the message" />
+          <p className="saved-note">
+            {client.notes.length
+              ? client.notes
+                  .map((note) => currentContextText(note, memory))
+                  .filter(Boolean)
+                  .join(" ")
+              : "No additional client preferences are recorded."}
+          </p>
+          {currentFacts(data, item).map((f) => (
+            <p className="saved-note" key={f.id}>
+              <Badge tone={f.certainty === "confirmed" ? "green" : "amber"}>
+                {f.certainty}
+              </Badge>{" "}
+              {f.value}
+            </p>
+          ))}
+          <TextLink onClick={() => onClient(client.id)}>
+            Open client record & commitments
+          </TextLink>
+          {property && (
+            <TextLink onClick={() => onProperty(property.id)}>
+              Open {property.address}
+            </TextLink>
+          )}
+        </details>
         <div className="info-strip">
           <p>
             Approving a message saves a draft. It does not send it, complete a

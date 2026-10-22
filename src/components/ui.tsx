@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowUpRight,
@@ -10,6 +10,8 @@ import {
   HeartHandshake,
   House,
   ChartNoAxesCombined,
+  Search,
+  Inbox,
 } from "lucide-react";
 import type { Agent } from "@/lib/types";
 export const workforce = [
@@ -112,17 +114,23 @@ export function SectionTitle({
 export function Empty({
   title,
   description,
+  kind = "empty",
+  action,
 }: {
   title: string;
   description: string;
+  kind?: "empty" | "search" | "complete";
+  action?: React.ReactNode;
 }) {
+  const Icon = kind === "complete" ? Check : kind === "search" ? Search : Inbox;
   return (
-    <div className="empty-state">
+    <div className={`empty-state empty-${kind}`}>
       <span className="empty-icon">
-        <Check size={23} />
+        <Icon size={23} />
       </span>
       <h3>{title}</h3>
       <p>{description}</p>
+      {action}
     </div>
   );
 }
@@ -135,12 +143,16 @@ export function Modal({
   children,
   onClose,
   wide = false,
+  initialFocus,
+  className = "",
 }: {
   title: string;
   subtitle?: string;
   children: React.ReactNode;
   onClose: () => void;
   wide?: boolean;
+  initialFocus?: string;
+  className?: string;
 }) {
   const panel = useRef<HTMLDivElement>(null);
   const [target, setTarget] = useState<HTMLElement | null>(null);
@@ -157,14 +169,20 @@ export function Modal({
       beforeModalOverflow = document.body.style.overflow;
     activeModals.push(element);
     document.body.style.overflow = "hidden";
-    panel.current?.focus();
+    (initialFocus
+      ? element.querySelector<HTMLElement>(initialFocus)
+      : null
+    )?.focus();
+    if (!element.contains(document.activeElement)) element.focus();
     function key(e: KeyboardEvent) {
       if (activeModals.at(-1) !== element) return;
       if (e.key === "Escape") closeRef.current();
       if (e.key === "Tab") {
-        const els = panel.current?.querySelectorAll<HTMLElement>(
-          'button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]',
-        );
+        const els = [
+          ...(panel.current?.querySelectorAll<HTMLElement>(
+            'button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled),summary,[tabindex="0"]',
+          ) || []),
+        ].filter((item) => item.getClientRects().length > 0);
         if (!els?.length) return;
         const first = els[0],
           last = els[els.length - 1];
@@ -190,7 +208,7 @@ export function Modal({
       document.removeEventListener("keydown", key);
       if (before?.isConnected) before.focus();
     };
-  }, [target]);
+  }, [target, initialFocus]);
   if (!target) return null;
   return createPortal(
     <div
@@ -205,7 +223,7 @@ export function Modal({
         aria-label={title}
         tabIndex={-1}
         ref={panel}
-        className={`modal ${wide ? "wide" : ""}`}
+        className={`modal ${wide ? "wide" : ""} ${className}`}
       >
         <header className="modal-header">
           <div>
@@ -225,6 +243,141 @@ export function Modal({
     </div>,
     target,
   );
+}
+
+export function AutoTextarea(
+  props: React.TextareaHTMLAttributes<HTMLTextAreaElement>,
+) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const input = ref.current;
+    if (!input) return;
+    const resize = () => {
+      input.style.height = "auto";
+      input.style.height = `${Math.max(input.scrollHeight + input.offsetHeight - input.clientHeight, 72)}px`;
+    };
+    resize();
+    // Width changes need a new wrapping measurement; avoid observing our own height.
+    let width = input.getBoundingClientRect().width;
+    const widthObserver = new ResizeObserver(() => {
+      const next = input.getBoundingClientRect().width;
+      if (next !== width) {
+        width = next;
+        resize();
+      }
+    });
+    widthObserver.observe(input);
+    return () => {
+      widthObserver.disconnect();
+    };
+  }, [props.value]);
+  return <textarea {...props} data-autosize ref={ref} />;
+}
+
+export function SectionNav({
+  items,
+  label = "Sections",
+  mobileSelect = false,
+}: {
+  items: { id: string; label: string }[];
+  label?: string;
+  mobileSelect?: boolean;
+}) {
+  const jump = (id: string) => {
+    const section = document.getElementById(id);
+    if (section instanceof HTMLDetailsElement) section.open = true;
+    section?.scrollIntoView({ block: "start", behavior: "instant" });
+    section?.focus({ preventScroll: true });
+  };
+  return (
+    <nav
+      className={`section-nav ${mobileSelect ? "mobile-section-select" : ""}`}
+      aria-label={label}
+    >
+      {mobileSelect && (
+        <label className="section-jump">
+          Jump to section
+          <select
+            aria-label="Jump to document section"
+            defaultValue=""
+            onChange={(event) => {
+              jump(event.target.value);
+              event.target.value = "";
+            }}
+          >
+            <option value="" disabled>
+              Choose a section
+            </option>
+            {items.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {items.map((item) => (
+        <button
+          key={item.id}
+          onClick={() => {
+            jump(item.id);
+          }}
+        >
+          {item.label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+export function useDraftGuard(dirty: boolean) {
+  const [leave, setLeave] = useState<(() => void) | null>(null);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+  return {
+    requestLeave: (action: () => void) =>
+      dirty ? setLeave(() => action) : action(),
+    dialog: leave ? (
+      <Modal
+        title="Keep your changes?"
+        subtitle="This draft has unsaved edits."
+        onClose={() => setLeave(null)}
+        initialFocus="[data-keep-editing]"
+      >
+        <div className="draft-guard">
+          <p>
+            Return to the draft to save your work, or discard these edits and
+            continue.
+          </p>
+          <div className="product-actions">
+            <button
+              className="button secondary danger"
+              onClick={() => {
+                setLeave(null);
+                leave();
+              }}
+            >
+              Discard edits & continue
+            </button>
+            <button
+              className="button primary"
+              data-keep-editing
+              onClick={() => setLeave(null)}
+            >
+              Keep editing
+            </button>
+          </div>
+        </div>
+      </Modal>
+    ) : null,
+  };
 }
 export const money = (n: number) =>
   new Intl.NumberFormat("en-US", {

@@ -1,4 +1,5 @@
 "use client";
+import { useId } from "react";
 import { currentContextText, situationImpacts } from "@/lib/intelligence";
 import { IntelligenceExceptions } from "./intelligence";
 
@@ -10,6 +11,7 @@ import {
   Badge,
   Modal,
   SectionTitle,
+  SectionNav,
   money,
   shortDate,
 } from "../ui";
@@ -37,8 +39,9 @@ export function PropertyDetail({
   onClient: (id: string) => void;
   onCommitment: (item: Commitment) => void;
   onUpdate: (data: WorkspaceData) => void;
-  notify: (message: string) => void;
+  notify: (message: string, tone?: "info" | "success" | "error") => void;
 }) {
+  const sectionId = useId();
   if (!p) return null;
   const memory = (data.clientFacts ?? []).filter(
     (f) =>
@@ -88,6 +91,22 @@ export function PropertyDetail({
             <ArrowUpRight size={14} />
           </button>
         </div>
+        <div className="next-step-summary">
+          <span className="eyebrow">NEXT STEP</span>
+          <p>
+            {commitments.find((c) => c.status === "open")?.title ||
+              tasks.find((t) => t.status === "open")?.title ||
+              "Recorded preparation is up to date."}
+          </p>
+        </div>
+        <SectionNav
+          label="Property sections"
+          items={[
+            { id: `${sectionId}-documents`, label: "Documents" },
+            { id: `${sectionId}-tasks`, label: "Tasks & commitments" },
+            { id: `${sectionId}-history`, label: "History" },
+          ]}
+        />
         <IntelligenceExceptions
           data={data}
           propertyId={p.id}
@@ -108,100 +127,111 @@ export function PropertyDetail({
             </div>
           ))}
         </div>
-        <WorkProducts
-          data={data}
-          onUpdate={onUpdate}
-          notify={notify}
-          filter={{ propertyId: p.id }}
-          context={{
-            kind: "seller_preparation",
-            agentId: p.agentId,
-            clientId: p.clientId,
-            propertyId: p.id,
-          }}
-          title="Prepared for this listing"
-        />
-        {commitments.length > 0 && (
-          <>
-            <SectionTitle title="Dependencies & commitments" />
-            <CommitmentList
-              items={commitments}
-              onChange={onCommitment}
-              outdatedIds={impacts
-                .filter((i) => i.kind === "commitment")
-                .map((i) => i.targetId)}
-            />
-          </>
-        )}
-        <SectionTitle
-          title="Every detail, accounted for"
-          aside={
-            <span className="small-text muted">
-              {tasks.filter((t) => t.status === "done").length} of{" "}
-              {tasks.length} complete
-            </span>
-          }
-        />
-        <Progress
-          done={tasks.filter((t) => t.status === "done").length}
-          total={tasks.length}
-        />
-        <div className="detail-task-list">
-          {tasks.map((t) => (
-            <TaskRow
-              key={t.id}
-              task={t}
-              data={data}
-              onToggle={() => onTask(t)}
-              onUpdate={onUpdate}
-              notify={notify}
-            />
-          ))}
-        </div>
-        {packages.length > 0 && (
-          <>
-            <SectionTitle title="Conversations & prepared work" />
-            {packages.map((pkg) => (
-              <button
-                className="detail-conversation"
-                key={pkg.id}
-                onClick={() => onReview(pkg.id)}
-              >
-                <AssistantIcon index={1} small />
-                <div>
-                  <strong>{pkg.title}</strong>
-                  <small>
-                    {shortDate(pkg.createdAt)} ·{" "}
-                    {pkg.origin === "sample"
-                      ? "Saved sample"
-                      : pkg.origin === "human"
-                        ? "Human correction"
-                        : "OpenAI"}
-                  </small>
-                </div>
-                <Badge tone={pkg.status === "pending" ? "blue" : "green"}>
-                  {pkg.status === "pending" ? "Ready for review" : "Reviewed"}
-                </Badge>
-                <ChevronRight size={16} />
-              </button>
+        <section id={`${sectionId}-documents`} tabIndex={-1}>
+          <WorkProducts
+            data={data}
+            onUpdate={onUpdate}
+            notify={notify}
+            filter={{ propertyId: p.id }}
+            context={{
+              kind: "seller_preparation",
+              agentId: p.agentId,
+              clientId: p.clientId,
+              propertyId: p.id,
+            }}
+            title="Prepared for this listing"
+          />
+        </section>
+        <section id={`${sectionId}-tasks`} tabIndex={-1}>
+          {commitments.length > 0 && (
+            <>
+              <SectionTitle title="Dependencies & commitments" />
+              <CommitmentList
+                items={commitments}
+                onChange={onCommitment}
+                outdatedIds={impacts
+                  .filter((i) => i.kind === "commitment")
+                  .map((i) => i.targetId)}
+              />
+            </>
+          )}
+          <SectionTitle
+            title="Every detail, accounted for"
+            aside={
+              <span className="small-text muted">
+                {tasks.filter((t) => t.status === "done").length} of{" "}
+                {tasks.length} complete
+              </span>
+            }
+          />
+          <Progress
+            done={tasks.filter((t) => t.status === "done").length}
+            total={tasks.length}
+          />
+          <div className="detail-task-list">
+            {tasks.map((t) => (
+              <TaskRow
+                key={t.id}
+                task={t}
+                data={data}
+                onToggle={() => onTask(t)}
+                onUpdate={onUpdate}
+                notify={notify}
+              />
             ))}
-          </>
-        )}
-        {p.notes.length > 0 && (
-          <>
-            <SectionTitle title="Listing notes" />
-            {p.notes.map((n, i) => (
-              <p className="saved-note" key={i}>
-                {currentContextText(n, memory) !== n && (
-                  <Badge tone="amber">
-                    Earlier plan · check the current client situation
+          </div>
+        </section>
+        <details
+          className="context-disclosure"
+          id={`${sectionId}-history`}
+          tabIndex={-1}
+        >
+          <summary>Conversations & listing history</summary>
+          {packages.length > 0 && (
+            <>
+              <SectionTitle title="Conversations & prepared work" />
+              {packages.map((pkg) => (
+                <button
+                  className="detail-conversation"
+                  key={pkg.id}
+                  onClick={() => onReview(pkg.id)}
+                >
+                  <AssistantIcon index={1} small />
+                  <div>
+                    <strong>{pkg.title}</strong>
+                    <small>
+                      {shortDate(pkg.createdAt)} ·{" "}
+                      {pkg.origin === "sample"
+                        ? "Saved sample"
+                        : pkg.origin === "human"
+                          ? "Human correction"
+                          : "OpenAI"}
+                    </small>
+                  </div>
+                  <Badge tone={pkg.status === "pending" ? "blue" : "green"}>
+                    {pkg.status === "pending" ? "Ready for review" : "Reviewed"}
                   </Badge>
-                )}
-                {n}
-              </p>
-            ))}
-          </>
-        )}
+                  <ChevronRight size={16} />
+                </button>
+              ))}
+            </>
+          )}
+          {p.notes.length > 0 && (
+            <>
+              <SectionTitle title="Listing notes" />
+              {p.notes.map((n, i) => (
+                <p className="saved-note" key={i}>
+                  {currentContextText(n, memory) !== n && (
+                    <Badge tone="amber">
+                      Earlier plan · check the current client situation
+                    </Badge>
+                  )}
+                  {n}
+                </p>
+              ))}
+            </>
+          )}
+        </details>
         <div className="detail-agent">
           <Avatar agent={agent} small />
           <span>

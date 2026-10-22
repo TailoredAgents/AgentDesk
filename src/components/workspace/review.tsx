@@ -20,7 +20,7 @@ import type {
   ReviewInput,
   Decision,
 } from "@/lib/types";
-import { AssistantIcon, Badge, Empty, shortDate } from "../ui";
+import { AssistantIcon, AutoTextarea, Badge, Empty, shortDate } from "../ui";
 import { request } from "./client-api";
 import { reviewEffect, selectedReviewDecisions } from "./review-helpers";
 import { ChangePreview } from "./intelligence";
@@ -43,7 +43,7 @@ export function Review({
   setSelected: (id: string) => void;
   onCapture: () => void;
   onUpdate: (data: WorkspaceData) => void;
-  notify: (s: string) => void;
+  notify: (s: string, tone?: "info" | "success" | "error") => void;
   onProperty: (id: string) => void;
 }) {
   const [tab, setTab] = useState<"pending" | "reviewed">(
@@ -54,7 +54,9 @@ export function Review({
     [decisions, setDecisions] = useState<Record<string, Decision>>({}),
     [busy, setBusy] = useState(false),
     [rewriting, setRewriting] = useState("");
+  const [showSource, setShowSource] = useState(false);
   const saving = useRef(false);
+  const packageStrip = useRef<HTMLDivElement>(null);
   const drafts = useRef<
     Record<
       string,
@@ -99,6 +101,18 @@ export function Review({
     const target = agentPackages.find((p) => p.id === selected);
     if (target) setTab(target.status);
   }, [selected, agent.id, data.packages]);
+  useEffect(() => {
+    const strip = packageStrip.current;
+    const selectedButton = strip?.querySelector<HTMLElement>(
+      '[aria-pressed="true"]',
+    );
+    if (!strip || !selectedButton) return;
+    const item = selectedButton.getBoundingClientRect();
+    const bounds = strip.getBoundingClientRect();
+    if (item.left < bounds.left) strip.scrollLeft += item.left - bounds.left;
+    else if (item.right > bounds.right)
+      strip.scrollLeft += item.right - bounds.right;
+  }, [pkg?.id]);
   const save = async () => {
     if (!pkg || !chosen.length || saving.current || rewriting) return;
     saving.current = true;
@@ -121,7 +135,7 @@ export function Review({
         updated.packages.find((p) => p.id === pkg.id)?.status || "pending",
       );
     } catch (e) {
-      notify((e as Error).message);
+      notify((e as Error).message, "error");
     } finally {
       saving.current = false;
       setBusy(false);
@@ -143,7 +157,7 @@ export function Review({
       setEdits((v) => ({ ...v, [action.id]: res.body }));
       notify("Draft refined. Review the wording before approving.");
     } catch (e) {
-      notify((e as Error).message);
+      notify((e as Error).message, "error");
     } finally {
       setRewriting("");
     }
@@ -197,6 +211,7 @@ export function Review({
       </div>
       {!pkg ? (
         <Empty
+          kind={tab === "pending" ? "complete" : "empty"}
           title={
             tab === "pending"
               ? "A clear desk. A clear head."
@@ -210,10 +225,11 @@ export function Review({
         />
       ) : (
         <>
-          <div className="package-selector">
+          <div className="package-selector" ref={packageStrip}>
             {list.map((p) => (
               <button
                 key={p.id}
+                aria-pressed={p.id === pkg.id}
                 onClick={() => setSelected(p.id)}
                 disabled={locked}
                 className={p.id === pkg.id ? "selected" : ""}
@@ -229,7 +245,29 @@ export function Review({
               </button>
             ))}
           </div>
-          <div className="review-workspace">
+          <div className="review-summary">
+            <div>
+              <strong>
+                {client?.name} ·{" "}
+                {pending.length
+                  ? `${pending.length} ${pending.length === 1 ? "decision" : "decisions"} remaining`
+                  : "Review complete"}
+              </strong>
+              <p>{pkg.summary}</p>
+            </div>
+            <button
+              className="button secondary source-toggle"
+              aria-expanded={showSource}
+              onClick={() => setShowSource(!showSource)}
+            >
+              {showSource
+                ? "Hide conversation"
+                : "View conversation & evidence"}
+            </button>
+          </div>
+          <div
+            className={`review-workspace ${showSource ? "show-source" : ""}`}
+          >
             <section className="source-panel">
               <div className="panel-eyebrow">
                 <AudioLines size={17} />
@@ -388,9 +426,24 @@ export function Review({
                         )}
                       </div>
                       <h3>{a.title}</h3>
-                      <ChangePreview data={data} action={a} pkg={pkg} />
+                      <ChangePreview
+                        data={data}
+                        action={a}
+                        pkg={pkg}
+                        proposedBody={edits[a.id] ?? a.body}
+                        proposedDate={dates[a.id] ?? a.dueDate}
+                      />
+                      {a.change && a.status === "pending" && (
+                        <label
+                          className="field-caption"
+                          htmlFor={`edit-${a.id}`}
+                        >
+                          Edit proposed wording
+                        </label>
+                      )}
                       {a.status === "pending" ? (
-                        <textarea
+                        <AutoTextarea
+                          id={`edit-${a.id}`}
                           aria-label={`Edit ${a.title}`}
                           value={edits[a.id] ?? a.body}
                           maxLength={6000}
@@ -597,43 +650,6 @@ export function Review({
                   </p>
                 </div>
               )}
-              <div className="review-commit">
-                <div>
-                  <strong>
-                    {pending.length
-                      ? `${chosen.length} ${chosen.length === 1 ? "decision" : "decisions"} to save`
-                      : `${pkg.actions.filter((a) => a.status === "approved").length} approved`}
-                  </strong>
-                  <small>
-                    {pending.length
-                      ? "Changes are saved to AgentDesk only."
-                      : "Saved to your shared workspace."}
-                  </small>
-                </div>
-                {pending.length > 0 ? (
-                  <button
-                    className="button primary"
-                    disabled={
-                      locked ||
-                      !chosen.length ||
-                      chosen.some((a) => !a.body.trim())
-                    }
-                    onClick={save}
-                  >
-                    {busy ? (
-                      <LoaderCircle size={16} className="spin" />
-                    ) : (
-                      <CheckCheck size={18} />
-                    )}{" "}
-                    {busy ? "Saving your decisions…" : "Confirm review"}
-                  </button>
-                ) : (
-                  <Badge tone="green">
-                    <CheckCheck size={15} />
-                    Review complete
-                  </Badge>
-                )}
-              </div>
               {pkg.propertyId && (
                 <WorkProducts
                   data={data}
@@ -651,6 +667,41 @@ export function Review({
                 />
               )}
             </section>
+          </div>
+          <div className="review-commit">
+            <div>
+              <strong>
+                {pending.length
+                  ? `${chosen.length} ${chosen.length === 1 ? "decision" : "decisions"} to save`
+                  : `${pkg.actions.filter((a) => a.status === "approved").length} approved`}
+              </strong>
+              <small>
+                {pending.length
+                  ? "Changes are saved to AgentDesk only."
+                  : "Saved to your shared workspace."}
+              </small>
+            </div>
+            {pending.length > 0 ? (
+              <button
+                className="button primary"
+                disabled={
+                  locked || !chosen.length || chosen.some((a) => !a.body.trim())
+                }
+                onClick={save}
+              >
+                {busy ? (
+                  <LoaderCircle size={16} className="spin" />
+                ) : (
+                  <CheckCheck size={18} />
+                )}{" "}
+                {busy ? "Saving your decisions…" : "Confirm review"}
+              </button>
+            ) : (
+              <Badge tone="green">
+                <CheckCheck size={15} />
+                Review complete
+              </Badge>
+            )}
           </div>
         </>
       )}
