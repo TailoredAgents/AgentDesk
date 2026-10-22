@@ -73,11 +73,16 @@ export function ClientDetail({
         </div>
         <div className="record-summary">
           <Badge tone="blue">
-            {tasks.filter((t) => t.status === "open").length} open tasks
+            {tasks.filter((t) => t.status === "open").length} open{" "}
+            {tasks.filter((t) => t.status === "open").length === 1
+              ? "task"
+              : "tasks"}
           </Badge>
           <Badge tone="amber">
-            {commitments.filter((item) => item.status === "open").length} open
-            commitments
+            {commitments.filter((item) => item.status === "open").length} open{" "}
+            {commitments.filter((item) => item.status === "open").length === 1
+              ? "commitment"
+              : "commitments"}
           </Badge>
           <Badge>
             {pendingReviews} {pendingReviews === 1 ? "review" : "reviews"}{" "}

@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowUp,
+  ArrowDown,
   ArrowUpRight,
   Check,
   FileText,
@@ -11,13 +12,74 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import type { PageContext, Target, Turn } from "@/lib/copilot/types";
+import type { Artifact, PageContext, Target, Turn } from "@/lib/copilot/types";
 import { request } from "./workspace/client-api";
 type PublicTurn = Omit<Turn, "calls"> & {
   operations: number;
   mode?: "live" | "example";
 };
 type State = { id: string; expiresAt: string; turns: PublicTurn[] };
+
+function CopilotResults({
+  artifacts,
+  onOpen,
+}: {
+  artifacts: Artifact[];
+  onOpen: (target: Target) => void;
+}) {
+  const work = artifacts.filter((a) => a.state !== "found");
+  const records = artifacts.filter((a) => a.state === "found");
+  const card = (a: Artifact, i: number) => (
+    <button
+      className="copilot-result"
+      key={`${a.target.kind}-${a.target.id}-${i}`}
+      onClick={() => onOpen(a.target)}
+    >
+      <span className="copilot-result-icon">
+        {a.target.kind === "document" ? (
+          <FileText size={18} />
+        ) : a.target.kind === "review" ? (
+          <MessageCircle size={18} />
+        ) : (
+          <Check size={18} />
+        )}
+      </span>
+      <span>
+        <small>
+          {a.target.kind === "document"
+            ? "SAVED DOCUMENT"
+            : a.target.kind === "review"
+              ? "SAVED REVIEW"
+              : "WORKSPACE RECORD"}
+        </small>
+        <strong>{a.title}</strong>
+        <em>
+          {a.state === "found"
+            ? a.detail
+            : "Open saved work for its current status."}
+        </em>
+      </span>
+      <ArrowUpRight size={16} />
+    </button>
+  );
+  return (
+    <div className="copilot-results">
+      {work.map(card)}
+      {records.length > 0 &&
+        (work.length > 0 || records.length > 2 ? (
+          <details className="copilot-records">
+            <summary>
+              {records.length} supporting{" "}
+              {records.length === 1 ? "record" : "records"}
+            </summary>
+            <div className="copilot-results">{records.map(card)}</div>
+          </details>
+        ) : (
+          records.map(card)
+        ))}
+    </div>
+  );
+}
 export function CopilotPanel({
   agentId,
   agentName,
@@ -54,6 +116,7 @@ export function CopilotPanel({
   const input = useRef<HTMLTextAreaElement>(null),
     log = useRef<HTMLDivElement>(null),
     panel = useRef<HTMLElement>(null);
+  const followLatest = useRef(true);
   const retry = useRef<{
     requestId: string;
     text: string;
@@ -97,13 +160,21 @@ export function CopilotPanel({
       clearInterval(poll);
     };
   }, [running, load]);
+  const latest = state?.turns.at(-1);
   useEffect(() => {
-    if (state?.turns.length || sending)
-      log.current?.scrollTo({
-        top: log.current.scrollHeight,
-        behavior: "smooth",
-      });
-  }, [state?.turns.length, sending]);
+    if (!followLatest.current) return;
+    const frame = requestAnimationFrame(() => {
+      log.current?.scrollTo({ top: log.current.scrollHeight });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [
+    state?.id,
+    state?.turns.length,
+    latest?.reply,
+    latest?.status,
+    sending,
+    compact,
+  ]);
   async function send(previous?: PublicTurn) {
     if (!state || running || !available || (!previous && !text.trim())) return;
     const submission = previous
@@ -116,6 +187,7 @@ export function CopilotPanel({
         ? retry.current
         : { requestId: crypto.randomUUID(), text: text.trim(), context };
     retry.current = submission;
+    followLatest.current = true;
     setSending(true);
     setError("");
     try {
@@ -198,9 +270,9 @@ export function CopilotPanel({
         ) {
           const nodes = [
             ...(panel.current?.querySelectorAll<HTMLElement>(
-              "button:not(:disabled),textarea:not(:disabled),a[href]",
+              "button:not(:disabled),textarea:not(:disabled),a[href],summary",
             ) ?? []),
-          ];
+          ].filter((node) => node.getClientRects().length > 0);
           if (e.shiftKey && document.activeElement === nodes[0]) {
             e.preventDefault();
             nodes.at(-1)?.focus();
@@ -239,6 +311,11 @@ export function CopilotPanel({
         aria-label="Copilot conversation"
         aria-live="polite"
         aria-relevant="additions text"
+        onScroll={(event) => {
+          const node = event.currentTarget;
+          followLatest.current =
+            node.scrollHeight - node.scrollTop - node.clientHeight < 80;
+        }}
       >
         {!state && <p role="status">Opening your conversation…</p>}
         {state && !state.turns.length && (
@@ -289,39 +366,10 @@ export function CopilotPanel({
                   <p>{turn.reply.text}</p>
                 </div>
                 {turn.reply.artifacts.length > 0 && (
-                  <div className="copilot-results">
-                    {turn.reply.artifacts.map((a, i) => (
-                      <button
-                        className="copilot-result"
-                        key={`${a.target.id}-${i}`}
-                        onClick={() => onOpen(a.target)}
-                      >
-                        <span className="copilot-result-icon">
-                          {a.target.kind === "document" ? (
-                            <FileText size={18} />
-                          ) : a.target.kind === "review" ? (
-                            <MessageCircle size={18} />
-                          ) : (
-                            <Check size={18} />
-                          )}
-                        </span>
-                        <span>
-                          <small>
-                            {a.state === "awaiting_review"
-                              ? "READY FOR YOUR REVIEW"
-                              : a.state === "reused"
-                                ? "EXISTING SAVED WORK"
-                                : a.state === "approved"
-                                  ? "APPROVED RECORD"
-                                  : "FOUND IN YOUR WORKSPACE"}
-                          </small>
-                          <strong>{a.title}</strong>
-                          <em>{a.detail}</em>
-                        </span>
-                        <ArrowUpRight size={15} />
-                      </button>
-                    ))}
-                  </div>
+                  <CopilotResults
+                    artifacts={turn.reply.artifacts}
+                    onOpen={onOpen}
+                  />
                 )}
                 {turn.reply.sourceIds.length > 0 && (
                   <small className="copilot-grounded">
@@ -365,6 +413,17 @@ export function CopilotPanel({
         )}
       </div>
       <div className="copilot-compose-area">
+        {!!state?.turns.length && (
+          <button
+            className="copilot-latest"
+            onClick={() => {
+              followLatest.current = true;
+              log.current?.scrollTo({ top: log.current.scrollHeight });
+            }}
+          >
+            <ArrowDown size={14} /> Latest message
+          </button>
+        )}
         {!available && (
           <div className="copilot-offline">
             <strong>Live Copilot isn’t connected yet.</strong>

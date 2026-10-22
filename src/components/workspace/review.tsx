@@ -185,18 +185,15 @@ export function Review({
           <h1>
             Ready for your review<span className="heading-dot">.</span>
           </h1>
-          <p>
-            Review the prepared work. Approve what is right; leave the rest
-            pending.
-          </p>
         </div>
         <button
           className="button primary"
           onClick={onCapture}
           disabled={locked}
+          aria-label="New conversation"
         >
           <Plus size={17} />
-          New conversation
+          <span className="review-capture-label">New conversation</span>
         </button>
       </div>
       <div className="review-toolbar">
@@ -281,13 +278,11 @@ export function Review({
               </p>
             </div>
             <button
-              className="button secondary source-toggle"
+              className="text-link source-toggle"
               aria-expanded={showSource}
               onClick={() => setShowSource(!showSource)}
             >
-              {showSource
-                ? "Hide conversation"
-                : "View conversation & evidence"}
+              {showSource ? "Hide source" : "Conversation & evidence"}
             </button>
           </div>
           {!!outdated.length && (
@@ -387,20 +382,9 @@ export function Review({
               )}
             </section>
             <section className="actions-panel">
-              <div className="actions-intro">
-                <div>
-                  <span className="eyebrow">PREPARED FOR YOUR APPROVAL</span>
-                  <h2>{client?.name}’s prepared work</h2>
-                </div>
-                <div className="avatar-stack">
-                  {[1, 2, 3].map((i) => (
-                    <AssistantIcon key={i} index={i} small />
-                  ))}
-                </div>
-              </div>
               <p className="actions-help">
-                Choose what to approve or reject, then confirm. Undecided work
-                stays pending; edits to pending work are not saved.
+                Choose your decisions, then confirm below. Undecided work stays
+                pending; its edits aren’t saved.
               </p>
               {pending.length > 0 && (
                 <button

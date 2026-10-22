@@ -186,7 +186,9 @@ export function IntelligenceExceptions({
   );
   if (!packages.length && !records.length && !uncertain.length) return null;
   return (
-    <section className="intelligence-exceptions">
+    <section
+      className={`intelligence-exceptions ${compact ? "situation-compact" : ""}`}
+    >
       <div className="eyebrow">
         <Sparkles size={14} /> SITUATIONS TO WATCH
       </div>
@@ -467,18 +469,18 @@ export function ClientIntelligence({
       </p>
       {[
         [
-          "Who they are",
-          current.filter((f) =>
-            ["objective", "communication", "buyer_priority"].includes(f.topic),
-          ),
-        ],
-        [
           "What's happening now",
           current.filter(
             (f) =>
               !["objective", "communication", "buyer_priority"].includes(
                 f.topic,
               ),
+          ),
+        ],
+        [
+          "Who they are",
+          current.filter((f) =>
+            ["objective", "communication", "buyer_priority"].includes(f.topic),
           ),
         ],
       ].map(([heading, list]) => (

@@ -166,13 +166,9 @@ export function Today({
           <p>
             {next ? (
               <>
-                <strong>{nextClient?.name}</strong>:{" "}
                 {next.reason.replace(/\b\d{4}-\d{2}-\d{2}\b/g, (date) =>
                   shortDate(date),
-                )}{" "}
-                {appointments[0]
-                  ? `Coming up: ${appointments[0].title} (${appointments[0].status}).`
-                  : "No upcoming appointment is recorded."}
+                )}
               </>
             ) : (
               <>

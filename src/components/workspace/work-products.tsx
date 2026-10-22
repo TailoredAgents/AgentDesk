@@ -459,29 +459,47 @@ function WorkProductEditor({
           </Badge>
         </div>
         <p className="work-product-note">
-          {version.snapshot.client?.name}
-          {version.snapshot.property
-            ? ` · ${version.snapshot.property.address}, ${version.snapshot.property.city}`
-            : ""}{" "}
-          · {version.snapshot.agent.name}
+          {[
+            version.snapshot.client?.name,
+            version.snapshot.property &&
+              `${version.snapshot.property.address}, ${version.snapshot.property.city}`,
+            version.snapshot.agent.name,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </p>
-        <div className="document-mode-bar">
-          <nav className="segmented-nav" aria-label="Document mode">
-            <button
-              aria-pressed={mode === "preview"}
-              onClick={() => setMode("preview")}
+        {version.status === "approved" && version.hasPdf && (
+          <div className="product-actions approved-document-access">
+            <a
+              className="button primary"
+              href={base + "/pdf"}
+              target="_blank"
+              rel="noreferrer"
             >
-              Preview
-            </button>
-            {pending && (
+              <FileText size={16} /> Open approved PDF
+            </a>
+            <a className="button secondary" href={base + "/pdf?download=1"}>
+              <Download size={16} /> Download PDF
+            </a>
+          </div>
+        )}
+        <div className="document-mode-bar">
+          {pending && (
+            <nav className="segmented-nav" aria-label="Document mode">
+              <button
+                aria-pressed={mode === "preview"}
+                onClick={() => setMode("preview")}
+              >
+                Preview
+              </button>
               <button
                 aria-pressed={mode === "edit"}
                 onClick={() => setMode("edit")}
               >
                 Edit document
               </button>
-            )}
-          </nav>
+            </nav>
+          )}
           <span className="save-status" role="status">
             {dirty
               ? "Unsaved edits · included in preview"
@@ -702,6 +720,14 @@ function WorkProductEditor({
                 suggestions, not commitments the seller has made.
               </p>
             </div>
+            <button
+              className="button secondary"
+              disabled={locked || stale || !validContent}
+              onClick={() => save("rejected")}
+            >
+              <X size={15} />
+              Reject version
+            </button>
             {dirty && (
               <p className="work-product-note">
                 You have unsaved edits. Save or discard them before switching
@@ -709,18 +735,20 @@ function WorkProductEditor({
               </p>
             )}
             <div className="product-actions sticky-actions document-review-actions">
-              <button
-                className="button secondary"
-                disabled={locked || !dirty || stale || !validContent}
-                onClick={() => save()}
-              >
-                {busy === "save" ? (
-                  <LoaderCircle size={15} className="spin" />
-                ) : (
-                  <Check size={15} />
-                )}
-                Save draft edits
-              </button>
+              {(editing || dirty) && (
+                <button
+                  className="button secondary"
+                  disabled={locked || !dirty || stale || !validContent}
+                  onClick={() => save()}
+                >
+                  {busy === "save" ? (
+                    <LoaderCircle size={15} className="spin" />
+                  ) : (
+                    <Check size={15} />
+                  )}
+                  Save draft edits
+                </button>
+              )}
               {dirty && (
                 <button
                   className="text-link"
@@ -730,14 +758,6 @@ function WorkProductEditor({
                   Discard unsaved edits
                 </button>
               )}
-              <button
-                className="button secondary"
-                disabled={locked || stale || !validContent}
-                onClick={() => save("rejected")}
-              >
-                <X size={15} />
-                Reject version
-              </button>
               <button
                 className="button primary"
                 disabled={
@@ -778,23 +798,6 @@ function WorkProductEditor({
           </div>
         )}
         <div className="product-actions product-version-actions">
-          {version.status === "approved" && version.hasPdf && (
-            <>
-              <a
-                className="button primary"
-                href={base + "/pdf"}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <FileText size={16} />
-                Open approved PDF
-              </a>
-              <a className="button secondary" href={base + "/pdf?download=1"}>
-                <Download size={16} />
-                Download PDF
-              </a>
-            </>
-          )}
           <button
             className="button secondary"
             disabled={locked || dirty}

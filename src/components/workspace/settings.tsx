@@ -165,9 +165,14 @@ export function Settings({
                   "Friendly and direct",
                 ]),
               ].map((t) => (
-                <option key={t}>{t}</option>
+                <option key={t} value={t}>
+                  {t.length > 32 ? "Personalized tone" : t}
+                </option>
               ))}
             </select>
+            {style.tone.length > 32 && (
+              <small className="setting-description">{style.tone}</small>
+            )}
           </label>
           <label>
             Message length
@@ -182,9 +187,14 @@ export function Settings({
                   "A little more detail",
                 ]),
               ].map((t) => (
-                <option key={t}>{t}</option>
+                <option key={t} value={t}>
+                  {t.length > 32 ? "Personalized length" : t}
+                </option>
               ))}
             </select>
+            {style.length.length > 32 && (
+              <small className="setting-description">{style.length}</small>
+            )}
           </label>
           <details className="style-advanced">
             <summary>Voice details & approved examples</summary>

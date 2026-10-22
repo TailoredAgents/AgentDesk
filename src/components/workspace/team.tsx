@@ -75,6 +75,41 @@ export function Team({
           Team preferences
         </button>
       </div>
+      <section className="bottlenecks team-support">
+        <SectionTitle
+          title="Where your team needs support"
+          aside={
+            <Badge tone="amber">{bottlenecks.length} need attention</Badge>
+          }
+        />
+        {bottlenecks.map(({ p, tasks, dependencies }) => (
+          <button
+            key={p.id}
+            className="bottleneck"
+            onClick={() => onProperty(p.id)}
+          >
+            <img src={p.image} alt="" />
+            <div>
+              <h3>{p.address}</h3>
+              <p>{dependencies[0]?.title || tasks[0]?.title}</p>
+              <span>
+                {data.agents.find((a) => a.id === p.agentId)?.name} ·{" "}
+                {tasks.length} open {tasks.length === 1 ? "task" : "tasks"} ·{" "}
+                {dependencies.length} unresolved{" "}
+                {dependencies.length === 1 ? "dependency" : "dependencies"}
+              </span>
+            </div>
+            <ArrowUpRight size={17} />
+          </button>
+        ))}
+        {!bottlenecks.length && (
+          <Empty
+            kind="complete"
+            title="Nothing holding you back"
+            description="No recorded listing tasks or dependencies are outstanding."
+          />
+        )}
+      </section>
       <IntelligenceExceptions
         compact
         data={data}
@@ -391,40 +426,6 @@ export function Team({
         </div>
       </div>
       <div className="team-bottom-grid">
-        <section className="bottlenecks">
-          <SectionTitle
-            title="A little support goes a long way"
-            aside={
-              <Badge tone="amber">{bottlenecks.length} need attention</Badge>
-            }
-          />
-          {bottlenecks.map(({ p, tasks, dependencies }) => (
-            <button
-              key={p.id}
-              className="bottleneck"
-              onClick={() => onProperty(p.id)}
-            >
-              <img src={p.image} alt="" />
-              <div>
-                <h3>{p.address}</h3>
-                <p>{dependencies[0]?.title || tasks[0]?.title}</p>
-                <span>
-                  {data.agents.find((a) => a.id === p.agentId)?.name} ·{" "}
-                  {tasks.length} open tasks · {dependencies.length} unresolved
-                  dependencies
-                </span>
-              </div>
-              <ArrowUpRight size={17} />
-            </button>
-          ))}
-          {!bottlenecks.length && (
-            <Empty
-              kind="complete"
-              title="Nothing holding you back"
-              description="No recorded listing tasks or dependencies are outstanding."
-            />
-          )}
-        </section>
         <section className="team-recent">
           <SectionTitle title="Forward, one detail at a time" />
           <div className="activity-list">

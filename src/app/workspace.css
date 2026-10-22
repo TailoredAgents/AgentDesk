@@ -634,8 +634,8 @@ details[tabindex="-1"] {
   gap: 20px;
   justify-content: space-between;
   align-items: center;
-  margin: 20px 0;
-  padding: 20px 24px;
+  margin: 12px 0;
+  padding: 12px 18px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: white;
@@ -853,7 +853,7 @@ details[tabindex="-1"] {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 12px;
-  margin: 22px 0 12px;
+  margin: 14px 0 10px;
 }
 .document-modal {
   background: #fff;
@@ -1898,5 +1898,235 @@ mark {
   }
   .review-group-heading span {
     white-space: nowrap;
+  }
+}
+
+/* Presentation refinements: preserve the shared visual language while keeping work in view. */
+.review-page-heading {
+  margin-bottom: 20px;
+}
+.review-page-heading .eyebrow {
+  margin-bottom: 8px;
+}
+.review-toolbar {
+  margin-bottom: 14px;
+}
+.review-summary .source-toggle {
+  flex-shrink: 0;
+  min-height: 36px;
+}
+.actions-panel {
+  padding: 16px 20px 0;
+}
+.actions-help {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+.actions-panel .approve-all {
+  margin: 0;
+}
+.action-cards {
+  margin-top: 16px;
+  gap: 12px;
+}
+.review-group-heading {
+  margin-top: 12px;
+}
+.situation-compact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 14px 18px;
+  margin: 16px 0;
+}
+.situation-compact .eyebrow,
+.situation-compact .record-summary {
+  margin: 0;
+}
+.situation-compact .situation-details {
+  margin: 0 0 0 auto;
+}
+.situation-compact .situation-details[open] {
+  flex-basis: 100%;
+}
+.situation-compact > .text-link {
+  margin: 0;
+}
+.team-support {
+  margin: 0 0 24px;
+}
+.team-support .bottleneck {
+  padding: 14px 16px;
+}
+.team-support .bottleneck span {
+  font-size: 12px;
+}
+.team-support .bottleneck h3 {
+  font-size: 16px;
+}
+.team-bottom-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+.setting-description {
+  display: block;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+.approved-document-access {
+  margin: 12px 0;
+}
+.product-version-toolbar {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.product-version-toolbar + .work-product-note {
+  margin: 10px 0;
+}
+.client-intelligence .intelligence-fact {
+  padding-block: 16px;
+}
+@media (max-width: 600px) {
+  .topbar .sample-label {
+    display: none;
+  }
+  .topbar {
+    gap: 8px;
+  }
+  .review-page-heading {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    margin-bottom: 12px;
+    gap: 12px;
+  }
+  .review-page-heading h1 {
+    font-size: 24px;
+  }
+  .review-page-heading > .button {
+    width: 44px;
+    height: 44px;
+    padding: 8px;
+    margin: 0;
+  }
+  .review-capture-label {
+    display: none;
+  }
+  .package-selector > button {
+    min-width: 190px;
+  }
+  .package-selector > button small {
+    display: none;
+  }
+  .review-summary {
+    align-items: flex-start;
+    gap: 4px;
+    padding: 10px 12px;
+    margin-block: 10px;
+  }
+  .review-summary p {
+    margin-top: 3px;
+    font-size: 12px;
+  }
+  .review-summary .source-toggle {
+    min-height: 28px;
+    width: auto;
+    padding: 0;
+  }
+  .actions-panel {
+    padding: 12px 0 0;
+  }
+  .actions-help {
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .action-cards {
+    margin-top: 10px;
+  }
+  .action-card {
+    padding: 14px;
+  }
+  .situation-compact {
+    gap: 8px;
+    padding: 12px;
+  }
+  .situation-compact .situation-details {
+    flex-basis: 100%;
+  }
+  .situation-compact .eyebrow {
+    font-size: 11px;
+  }
+  .team-support .bottleneck {
+    padding: 12px 0;
+  }
+  .team-support .bottleneck img {
+    width: 48px;
+    height: 48px;
+  }
+  .team-support .section-title {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .team-support .section-title h2 {
+    font-size: 18px;
+  }
+  .document-modal .modal-header {
+    padding: 14px 18px;
+  }
+  .document-modal .modal-header h2 {
+    font-size: 20px;
+  }
+  .document-modal .modal-header p {
+    display: none;
+  }
+  .document-modal .work-product-editor {
+    padding: 16px 18px 0;
+  }
+  .document-mode-bar {
+    margin-block: 12px 8px;
+    gap: 8px;
+  }
+  .product-version-toolbar label {
+    flex: 1 1 100%;
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+  .product-version-toolbar select {
+    min-width: 0;
+    flex: 1;
+  }
+  .product-document-title {
+    font-size: 25px;
+  }
+  .document-review-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-block: 10px;
+  }
+  .document-review-actions .button {
+    width: auto;
+    min-width: 0;
+    flex: 1 1 0;
+    white-space: normal;
+    min-height: 42px;
+    font-size: 12px;
+    padding: 8px 10px;
+  }
+  .document-review-actions .button.primary {
+    flex: 1;
+    margin-left: auto;
+  }
+  .document-review-actions .text-link {
+    width: 100%;
+  }
+  .approved-document-access {
+    gap: 8px;
+  }
+  .approved-document-access .button {
+    padding: 10px;
+    font-size: 12px;
   }
 }
