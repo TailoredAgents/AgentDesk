@@ -68,3 +68,7 @@ jobs:
           npx tsx --test tests/workstyle.test.ts
       - name: Verify production startup and protected HTTP routes
         run: npm run test:production
+      - name: Verify production with Ask AgentDesk enabled
+        env:
+          SMOKE_COPILOT: "1"
+        run: npm run test:production

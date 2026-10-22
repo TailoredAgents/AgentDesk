@@ -11,6 +11,7 @@ import { assertNoUnsupportedConfirmations } from "./ai";
 import {
   assertNoUnsupportedCompletion,
   assertSupportedDates,
+  explicitSourceDates,
 } from "./ai-quality";
 import type { Agent, WorkspaceData } from "./types";
 import type {
@@ -498,7 +499,38 @@ export function validateWorkProductContent(
                 "The appointment time is not supported by its quoted record.",
               );
           }
-          assertSupportedDates(item.text, item.sourceQuote);
+          // A readable rendering of an explicitly quoted appointment timestamp
+          // is evidence-equivalent; keep its recorded wall time and date.
+          const dateEvidence = item.sourceId!.startsWith("appointment:")
+            ? item.sourceQuote.replace(
+                /\b(20\d{2}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::\d{2})?(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})/g,
+                (stamp, date, hours, minutes) => {
+                  const day = new Date(`${date}T12:00:00Z`);
+                  const hour = Number(hours);
+                  if (
+                    Number.isNaN(day.valueOf()) ||
+                    hour > 23 ||
+                    Number(minutes) > 59
+                  )
+                    return stamp;
+                  const readable = new Intl.DateTimeFormat("en-US", {
+                    timeZone: "UTC",
+                    weekday: "long",
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  }).format(day);
+                  return `${stamp} (${readable}; ${hour % 12 || 12}:${minutes} ${hour < 12 ? "am" : "pm"})`;
+                },
+              )
+            : item.sourceQuote;
+          if (
+            explicitSourceDates(item.text).some((date) => date.weekdayConflict)
+          )
+            groundingError(
+              "The document's weekday disagrees with its calendar date.",
+            );
+          assertSupportedDates(item.text, dateEvidence);
           assertNoUnsupportedConfirmations(item.text, source.text);
           assertNoUnsupportedCompletion(item.text, source.text);
         }

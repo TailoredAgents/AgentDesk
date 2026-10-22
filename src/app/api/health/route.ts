@@ -4,6 +4,7 @@ import {
   validateWorkspaceAccessEnvironment,
 } from "@/lib/deployment-config";
 import { getHealth } from "@/lib/repository";
+import { enabled } from "@/lib/copilot/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET() {
@@ -21,7 +22,16 @@ export async function GET() {
   }
   try {
     await getHealth();
-    return jsonResponse({ status: "ok", database: "ok" });
+    const response = jsonResponse({ status: "ok", database: "ok" });
+    // Public release metadata only; never expose credentials or account settings.
+    const revision = process.env.RENDER_GIT_COMMIT;
+    if (revision && /^[a-f0-9]{40}$/i.test(revision))
+      response.headers.set("X-AgentDesk-Revision", revision);
+    response.headers.set(
+      "X-AgentDesk-Copilot",
+      enabled() ? "enabled" : "disabled",
+    );
+    return response;
   } catch {
     console.error(
       "[agentdesk] Database readiness failed or timed out. Check DATABASE_URL and the db:migrate / db:seed deploy logs.",

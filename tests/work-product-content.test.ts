@@ -113,6 +113,13 @@ test("a tentative appointment and changed ISO timestamp cannot become a confirme
     ],
   };
   assert.doesNotThrow(() => validateWorkProductContent(content, snapshot));
+  content.sections[0].items[0].text = "Tentative for Friday, October 23, 2026 at 11:00 a.m.";
+  assert.doesNotThrow(() => validateWorkProductContent(content, snapshot));
+  content.sections[0].items[0].text = "Tentative for Friday, October 23, 2026 at 12:00 p.m.";
+  assert.throws(() => validateWorkProductContent(content, snapshot), /time/i);
+  content.sections[0].items[0].text = "Tentative for Monday, October 23, 2026 at 11:00 a.m.";
+  assert.throws(() => validateWorkProductContent(content, snapshot), /weekday/i);
+  content.sections[0].items[0].text = `The appointment is tentative at ${appointment.startsAt}.`;
   content.sections[0].items[0].certainty = "confirmed";
   assert.throws(() => validateWorkProductContent(content, snapshot));
   content.sections[0].items[0].certainty = "uncertain";

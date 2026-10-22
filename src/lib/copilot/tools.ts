@@ -82,7 +82,7 @@ const descriptions: Record<keyof typeof schemas, string> = {
   capture_interaction:
     "Process the CURRENT USER MESSAGE VERBATIM through the existing conversation pipeline to save notes, message, task and situation proposals for human review. No model-written transcript is accepted. Use null propertyId for unidentified showing addresses. Prior chat is not factual evidence.",
   prepare_document:
-    "Create a real saved seller checklist or appointment briefing. Reuse a current existing version by default. newVersion=true explicitly prepares a new version, refreshing reviewed facts through existing document services. Final PDF approval remains human. Requires a resolved client; appointment ID must be a returned authorized appointment.",
+    "Create a real saved seller checklist or appointment briefing. Reuse a current existing version by default. newVersion=true explicitly prepares a new version, refreshing reviewed facts through existing document services. Final PDF approval remains human. A seller checklist requires a resolved client/property. An appointment briefing requires a returned authorized appointment; use its exact clientId/propertyId, including null for a team huddle or other appointment without a client. No client is required for such appointments.",
   revise_message:
     "Rewrite and SAVE one pending message draft in its existing review. Retains original wording and required approval. Only shorter, natural, professional are supported. Never edits an approved draft.",
 };

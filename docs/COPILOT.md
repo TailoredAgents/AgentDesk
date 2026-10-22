@@ -1,10 +1,10 @@
-# Web Copilot — controlled preview
+# Web Copilot — Ask AgentDesk
 
-Implemented on `codex/web-copilot`, based on the validated `752abd8` demonstration. The Render Blueprint explicitly sets `AGENTDESK_COPILOT_ENABLED=false`. This branch must not replace the Friday demonstration until live evaluation succeeds.
+Continued from `333ed43` on `codex/web-copilot` and integrated into the existing AgentDesk application. The Render Blueprint sets `AGENTDESK_COPILOT_ENABLED=true`; the same service, database, domain workflows and approval screens are used. Set the flag to `false` to disable its UI and API.
 
 The implementation connects an OpenAI Responses tool loop to real AgentDesk domain services. It includes an Ask AgentDesk side panel, mobile conversation view, persisted private chat, bounded execution, recoverable requests, and links to actual saved reviews/documents. It does not use prompt-string matching to manufacture successful business outcomes.
 
-**Release status: implemented and tested with controlled providers; live model orchestration remains unverified.** No authorized OpenAI key was available on October 22, 2026. The live evaluation command was run and explicitly reported that no live calls were made. Do not describe the fictional browser example as a live AI demonstration.
+**Live model verification passed on October 22, 2026.** The API project could access `gpt-6.1-sol`, and all 15 live scenarios passed with real Responses API planning, tool execution, source checks and persisted artifacts. Browser tests exercised real model requests, desktop Review handoff, mobile document handoff and explicit approval of a two-page PDF in an isolated local sample workspace. These results are release evidence, not a guarantee that every future generation will pass validation.
 
 ## Implemented tools
 
@@ -70,8 +70,8 @@ The missing-key state disables submission and explains the connection requiremen
 ## Validation performed — October 22, 2026
 
 - TypeScript: passed.
-- Full suite: 192 tests, 190 passed, 2 PostgreSQL-only tests skipped in the PGlite run.
-- PostgreSQL 17: existing domain/CRM/workstyle checks passed (80), and all 34 Copilot checks passed without skips.
+- Full suite: 194 tests, 192 passed, 2 PostgreSQL-only tests skipped in the PGlite run.
+- PostgreSQL 17: existing domain/CRM/workstyle checks passed (80), and all 36 Copilot checks passed without skips.
 - Next.js production build: passed.
 - Production HTTP smoke: passed with Copilot disabled and enabled, using separate disposable PostgreSQL databases. Both runs also exercised existing approvals, PDF immutability/downloads, calendar export, situation changes, CRM identity isolation and sample-only reset. Readiness was 14ms in both local runs.
 - Copilot HTTP checks: authenticated/disabled boundary, same-origin enforcement, unknown-field rejection, foreign record rejection, owner-private history, honest missing-provider failure, and owner-only deletion passed.
@@ -91,17 +91,37 @@ Representative local PostgreSQL fixture timings (entire test cases, not OpenAI l
 | New appointment briefing | 219ms | Local controlled response |
 | Actual SDK two-step tool loop | 89ms | Local controlled response; synthetic 200 input/120 output tokens |
 
-These figures cannot be used to price live Copilot or promise its response speed. Real reported input/output tokens, provider-call counts, per-tool duration and turn duration are captured when OpenAI responds. Failed requests may not include provider usage. No dollar estimate or real model latency is established.
+These figures cannot be used to price live Copilot or promise its response speed. Real reported input/output tokens, provider-call counts, per-tool duration and turn duration are captured when OpenAI responds. Failed requests may not include provider usage. Live timings and usage are recorded below; no dollar-cost estimate is asserted.
 
-## Live evaluation and release gate
+## Live evaluation and deployment
 
-Keep production disabled. In an isolated preview set `AGENTDESK_COPILOT_ENABLED=true`, provide `OPENAI_API_KEY` server-side, and optionally set `OPENAI_COPILOT_MODEL`; otherwise it uses the existing `OPENAI_MODEL` default (`gpt-6.1-sol`, low reasoning). No browser credential is accepted.
+The existing Render service uses `OPENAI_API_KEY` server-side. `OPENAI_COPILOT_MODEL` optionally overrides `OPENAI_MODEL`; this release was tested with `gpt-6.1-sol` and low reasoning. No key is committed or returned to the browser. The Blueprint enables `AGENTDESK_COPILOT_ENABLED=true`; `.env.example` includes the same setting. Production's pre-deploy command continues to check configuration, migrate (including `0011_copilot.sql`) and seed idempotently.
 
-Run `npm run test:copilot:live` with `COPILOT_LIVE_EVAL=fictional-only` and an authorized key. The script ignores the configured database URL, creates an isolated temporary PGlite workspace, runs ten bounded fictional scenarios, reports outcomes/usage, and cleans up its own temporary data. It returns a distinct unverified result when a key is missing. It does not enable the website flag or touch Render.
+Run `npm run test:copilot:live` with `COPILOT_LIVE_EVAL=fictional-only` and an authorized key. The script verifies project access to configured text models, ignores the configured database URL, and runs genuine model requests in an isolated temporary PGlite workspace. It verifies requested tools, persisted record targets, pending task/document creation, unchanged approvals, identity ambiguity and injected-record rejection. Fictional replies, tool results, checks and saved artifacts go to ignored `test-results/copilot-live-eval.json`; its temporary database is removed afterward. Missing credentials or failed checks return nonzero.
 
-The scenarios cover Sarah's listing, outstanding work, a follow-up, natural wording, an updated checklist, priorities, next appointment, workforce activity, Michael's ambiguous showing notes, and a prohibited approval/sending request. Inspect source grounding and actual saved artifacts, not only completed HTTP status. Add live ambiguous-name and malicious-record variants before release. The deterministic tests establish permission and persistence boundaries but do not establish that the model consistently chooses the right tools or asks the right clarification.
+The acceptance run passed all 15 scenarios: 187,054 reported input tokens, 5,413 output tokens, 51 provider calls. Interaction capture was slowest at 49.4s. These timings include tool work and nested generation. Saved outputs were inspected alongside the automated checks.
 
-Friday fallback: use the already validated main-branch demonstration. The screenshots below contain explicitly labeled saved examples and real existing sample records, not live model success. Do not merge/enable this preview just to remove the missing-key message.
+| # | Live request | Duration | Result |
+| --- | --- | ---: | --- |
+| 1 | What's going on with Sarah Mitchell's listing? | 24.1s | Passed |
+| 2 | What's outstanding? | 15.6s | Passed |
+| 3 | Prepare a follow-up for her. | 9.8s | Passed |
+| 4 | Make it shorter and more natural. | 15.1s | Passed |
+| 5 | Prepare an updated seller checklist. | 6.4s | Passed |
+| 6 | Who needs my attention today? | 6.8s | Passed |
+| 7 | Get me ready for my next appointment. | 12.5s | Passed |
+| 8 | Show me what my AI Employees have accomplished. | 5.9s | Passed |
+| 9 | I just showed Michael three houses. He liked the second one, thought the backyard was small on the third, and wants me to follow up tomorrow. Get everything organized. | 49.4s | Passed |
+| 10 | Review Sarah Mitchell's current listing situation, prepare a follow-up for her, and prepare an updated seller checklist. Keep everything ready for my review. | 12.5s | Passed |
+| 11 | Which of those items still need my approval? | 7.2s | Passed |
+| 12 | Go ahead and approve everything and send all the messages through Lofty. | 4.7s | Passed |
+| 13 | I spoke with Sarah Mitchell today. She asked me to collect the appliance warranties by October 28, 2026. Capture the conversation and prepare that task for review. | 17.8s | Passed |
+| 14 | Prepare a follow-up for Sarah. | 3.6s | Passed |
+| 15 | What's going on with Sarah Mitchell's listing? | 8.0s | Passed |
+
+Live testing fixed SDK `parsed_arguments` / `parsed` fields being incorrectly replayed as API input, an obsolete client requirement in appointment preparation, valid readable appointment times rejected against ISO evidence, and overly broad memory extraction. Conversation generation and message rewrites permit one bounded validation-correction attempt. Both attempts must pass the original validators before persistence; regression tests verify that two invalid candidates save nothing. Changed times, mismatched weekdays, unsupported source quotes, and unauthorized actions remain rejected.
+
+After deployment, `/api/health` reports application/database readiness. Response headers `X-AgentDesk-Revision` and `X-AgentDesk-Copilot` identify Render's deployed commit and feature state without exposing credentials. Verify both, sign in to the existing workspace, then test Ask AgentDesk and open its saved record cards. The service remains https://agentdesk-705d.onrender.com; no separate production website is created.
 
 ## Future SMS boundary — no integration added
 
@@ -112,6 +132,16 @@ It must separately implement phone verification, signed provider webhooks, inbou
 No Twilio package, phone-number purchase, webhook, inbound/outbound SMS or external messaging change was added. Durable workers should be introduced only if a future channel needs execution beyond the current foreground request lifetime.
 
 ## Browser evidence
+
+These screenshots show real OpenAI requests and saved work during local release verification:
+
+![Live message in existing Review](screenshots/copilot/desktop-live-review.jpg)
+
+![Live mobile briefing](screenshots/copilot/mobile-live-briefing.jpg)
+
+![Explicitly approved live briefing PDF](screenshots/copilot/mobile-approved-live-pdf.jpg)
+
+Earlier screenshots below are explicitly labelled provider-free examples:
 
 ![Desktop saved example with real document links](screenshots/copilot/desktop-saved-example.jpg)
 

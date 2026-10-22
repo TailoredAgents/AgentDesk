@@ -678,6 +678,82 @@ async function providerFixture(body: unknown, operation: () => Promise<void>) {
     server.closeAllConnections();
   }
 }
+for (const repaired of [true, false])
+  test(`invalid generation gets one validated correction attempt (repaired=${repaired})`, async () => {
+    const quote = "Michael wants a written recap of the showing.";
+    const valid = {
+      observations: [],
+      summary: quote,
+      facts: [{ text: quote, sourceQuote: quote, certainty: "requested" }],
+      clarifications: [],
+      actions: ["summary", "crm_note"].map((kind) => ({
+        kind,
+        title: "Showing recap",
+        body: quote,
+        dueDate: null,
+        sourceQuote: quote,
+        certainty: "requested",
+      })),
+    };
+    let calls = 0;
+    const before = await getWorkspace();
+    await providerFixture(
+      (request: { instructions: string }) => {
+        calls++;
+        assert.equal(
+          request.instructions.includes("VALIDATION CORRECTION"),
+          calls === 2,
+        );
+        const candidate =
+          calls === 2 && repaired
+            ? valid
+            : {
+                ...valid,
+                facts: [
+                  {
+                    text: "Invented fact",
+                    sourceQuote: "This is not in the source",
+                    certainty: "confirmed",
+                  },
+                ],
+              };
+        return {
+          output: [
+            {
+              id: "msg_repair",
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [
+                {
+                  type: "output_text",
+                  text: JSON.stringify(candidate),
+                  annotations: [],
+                },
+              ],
+            },
+          ],
+        };
+      },
+      async () => {
+        const operation = () =>
+          tool(
+            "capture_interaction",
+            { clientId: "michael", propertyId: null, title: "Validated recap" },
+            { ...page, clientId: "michael" },
+            quote,
+          );
+        if (repaired) assert.equal((await operation()).state, "prepared");
+        else await assert.rejects(operation, /source/i);
+      },
+    );
+    assert.equal(calls, 2);
+    assert.equal(
+      (await getWorkspace()).packages.length,
+      before.packages.length + (repaired ? 1 : 0),
+    );
+  });
+
 test("capture uses verbatim user interaction, saves real proposals, and waits for structured approval", async () => {
   const text =
     "Michael asked: Please prepare a short recap of the homes we discussed. The second house still needs to be identified.";
@@ -988,14 +1064,33 @@ test("real Responses SDK carries function results and returns validated structur
       store: boolean;
       parallel_tool_calls: boolean;
       tools: unknown[];
+      include: string[];
       input: Array<{ type?: string; call_id?: string; output?: string }>;
     }) => {
       assert.equal(request.store, false);
       assert.equal(request.parallel_tool_calls, false);
       assert.equal(request.tools.length, 8);
+      assert.ok(request.include.includes("reasoning.encrypted_content"));
       if (calls++ === 0)
         return {
           output: [
+            {
+              type: "message",
+              id: "msg_progress",
+              role: "assistant",
+              status: "completed",
+              phase: "commentary",
+              content: [
+                {
+                  type: "output_text",
+                  text: JSON.stringify({
+                    text: "Checking the available workflows.",
+                    sourceIds: [],
+                  }),
+                  annotations: [],
+                },
+              ],
+            },
             {
               type: "function_call",
               id: "fc_fixture",
@@ -1005,6 +1100,9 @@ test("real Responses SDK carries function results and returns validated structur
             },
           ],
         };
+      assert.ok(!JSON.stringify(request.input).includes('"parsed_arguments"'));
+      assert.ok(!JSON.stringify(request.input).includes('"parsed"'));
+      assert.ok(JSON.stringify(request.input).includes('"phase":"commentary"'));
       const output = request.input.find(
         (i) =>
           i.type === "function_call_output" && i.call_id === "call_fixture",

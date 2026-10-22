@@ -34,6 +34,7 @@ const env = {
   AGENTDESK_COPILOT_ENABLED:
     process.env.SMOKE_COPILOT === "1" ? "true" : "false",
   NEXT_TELEMETRY_DISABLED: "1",
+  RENDER_GIT_COMMIT: "b".repeat(40),
   CRM_PILOT_ENABLED: "1",
   PILOT_AUTH_SECRET: "production-test-individual-auth-secret-32-characters",
   PILOT_GOOGLE_CLIENT_ID: "mock-identity-client-no-real-login",
@@ -103,6 +104,14 @@ try {
   const started = performance.now();
   const health = await request("/api/health");
   assert.deepEqual(await health.json(), { status: "ok", database: "ok" });
+  assert.equal(
+    health.headers.get("x-agentdesk-revision"),
+    env.RENDER_GIT_COMMIT,
+  );
+  assert.equal(
+    health.headers.get("x-agentdesk-copilot"),
+    process.env.SMOKE_COPILOT === "1" ? "enabled" : "disabled",
+  );
   const elapsed = performance.now() - started;
   assert.ok(
     elapsed < 4_000,

@@ -230,7 +230,7 @@ export function CopilotPanel({
       <div className="copilot-context">
         <span className="copilot-context-dot" />
         <span>{contextLabel}</span>
-        <small>Preview</small>
+        <small>Sample workspace</small>
       </div>
       <div
         className="copilot-chat"
