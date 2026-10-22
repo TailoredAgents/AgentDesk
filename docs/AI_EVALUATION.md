@@ -4,6 +4,10 @@ Generation, rewriting, and transcription run on the server through the official 
 
 ## Run an actual provider evaluation
 
+The interactive default is `gpt-6.1-sol` with `reasoning.effort: low` for analysis, proactive drafts, and rewriting. [OpenAI describes Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol) as near-Astra capability at lower cost. Standard short-context input/output rates are $2/$10 per million tokens versus Astra's $10/$50 ([pricing](https://developers.openai.com/api/docs/pricing), checked October 21, 2026). This is an 80% reduction in those token rates, not a measured end-to-end cost or quality guarantee. No live speed/quality comparison has been run without credentials. Other configured models receive no forced reasoning parameter. Transcription remains `gpt-transcribe`.
+
+The Render Blueprint explicitly sets both text model variables to `gpt-6.1-sol`; a Blueprint sync applies these values. Change the Blueprint values as well as your environment when intentionally selecting another deployed model, because a later sync overwrites conflicting dashboard settings.
+
 Configure `OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_TRANSCRIBE_MODEL` in `.env`, `.env.local`, or the process environment, using the same project and model settings intended for Render. Optionally set `OPENAI_REWRITE_MODEL` to compare a separate model for rewriting; otherwise it uses the analysis model. Then run:
 
 ```powershell

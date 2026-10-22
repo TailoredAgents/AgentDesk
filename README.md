@@ -73,9 +73,9 @@ Copy [`.env.example`](.env.example) to `.env`. Never commit credentials or expos
 | `DATABASE_URL`             | Required in production. PostgreSQL connection string. If absent in development, local PGlite is used.                                                  |
 | `PGLITE_DATA_DIR`          | Optional local storage override. Defaults to `.agentdesk/postgres`; `:memory:` is useful for isolated tests.                                           |
 | `OPENAI_API_KEY`           | Optional. Enables new generation, rewriting, and transcription. Missing keys produce a clear unavailable state while saved sample work remains usable. |
-| `OPENAI_MODEL`             | Text/structured output model; default `gpt-6-astra`. Use a compatible model available to your OpenAI project.                                          |
+| `OPENAI_MODEL`             | Text/structured output model; default `gpt-6.1-sol`, using low reasoning for interactive latency. Use a compatible model available to your project.     |
 | `OPENAI_TRANSCRIBE_MODEL`  | Audio transcription model; default `gpt-transcribe`.                                                                                                   |
-| `OPENAI_REWRITE_MODEL`     | Optional rewrite-specific model. If blank, uses `OPENAI_MODEL`. Verify access and factual quality with the live evaluation.                            |
+| `OPENAI_REWRITE_MODEL`     | Optional rewrite-specific model. If blank, uses `OPENAI_MODEL`. Sol uses low reasoning; other models retain their own defaults.                         |
 | `DEMO_PASSWORD`            | Required in production, at least 12 characters. Shared password for the pilot workspace.                                                               |
 | `SESSION_SECRET`           | Required in production, at least 32 characters. Use a cryptographically random value.                                                                  |
 | `APP_URL`                  | Optional canonical origin for mutation Origin checks, such as `https://agentdesk.example.com`. If set, access the app using that exact origin.         |

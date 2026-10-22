@@ -17,6 +17,11 @@ services:
         value: production
       - key: NODE_VERSION
         value: "22"
+      # Keep the deployed text models in sync with the interactive default.
+      - key: OPENAI_MODEL
+        value: gpt-6.1-sol
+      - key: OPENAI_REWRITE_MODEL
+        value: gpt-6.1-sol
       - key: DATABASE_URL
         fromDatabase:
           name: agentdesk-postgres

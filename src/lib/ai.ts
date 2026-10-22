@@ -38,11 +38,22 @@ export const generatedPackageSchema = z.object({
 });
 export type GeneratedPackage = z.infer<typeof generatedPackageSchema>;
 export function getAIModelNames() {
-  const analysis = process.env.OPENAI_MODEL || "gpt-6-astra";
+  const analysis = process.env.OPENAI_MODEL || "gpt-6.1-sol";
   return {
     analysis,
     rewrite: process.env.OPENAI_REWRITE_MODEL || analysis,
     transcription: process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-transcribe",
+  };
+}
+
+function textModelSettings(model: string) {
+  // Sol supports low reasoning. Keep other configurable models' own defaults,
+  // including models that do not accept a reasoning parameter at all.
+  return {
+    model,
+    ...(model === "gpt-6.1-sol"
+      ? { reasoning: { effort: "low" as const } }
+      : {}),
   };
 }
 
@@ -322,7 +333,7 @@ async function generatePackage(
   const openai = client();
   const response = await providerCall(() =>
     openai.responses.parse({
-      model: getAIModelNames().analysis,
+      ...textModelSettings(getAIModelNames().analysis),
       store: false,
       instructions:
         SYSTEM_PROMPT +
@@ -385,7 +396,7 @@ export async function rewriteMessage(
   const rewriteSchema = z.object({ body: z.string().min(1).max(6000) });
   const response = await providerCall(() =>
     openai.responses.parse({
-      model: getAIModelNames().rewrite,
+      ...textModelSettings(getAIModelNames().rewrite),
       store: false,
       max_output_tokens: 3000,
       instructions: `${SYSTEM_PROMPT}\nRewrite only the supplied message. The permitted adjustment is ${instruction}. ${instruction === "shorter" ? "Cut repetition and filler; target 60–75% of the original length while retaining every necessary fact, uncertainty and next step. The result must be shorter." : instruction === "natural" ? "Use the agent's everyday voice, contractions when appropriate, varied sentence lengths and a specific opening. Remove template language and unnecessary enthusiasm." : "Use measured, clear and polished wording. Reduce casual filler, keep warmth, and do not add corporate phrases or a formal greeting contrary to the agent's profile."} The result must meaningfully differ from the draft. Preserve source facts and uncertainty; remove unsupported claims. Never change a requested appointment to confirmed or add a promise. Return just the rewritten body in the schema. This is a draft for review.`,
