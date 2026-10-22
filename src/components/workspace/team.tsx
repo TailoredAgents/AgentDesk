@@ -30,6 +30,15 @@ export function Team({
   const completed = data.tasks.filter((t) => t.status === "done");
   const pending = data.packages.filter((p) => p.status === "pending");
   const insight = teamInsights(data);
+  const productVersions = (data.workProducts || []).flatMap(
+    (product) => product.versions,
+  );
+  const approvedDocuments = productVersions.filter(
+    (version) => version.status === "approved" && version.hasPdf,
+  );
+  const pendingDocuments = productVersions.filter(
+    (version) => version.status === "pending",
+  );
   const bottlenecks = insight.listings
     .map((p) => ({
       p,
@@ -69,6 +78,13 @@ export function Team({
             {completed.length} tasks marked complete · {insight.liveUsers}{" "}
             agents with live AI packages · {insight.livePackages.length} live AI
             packages. Saved sample output is excluded from live usage.
+          </p>
+          <p className="small-text">
+            {approvedDocuments.length} approved PDF{" "}
+            {approvedDocuments.length === 1 ? "version" : "versions"} saved ·{" "}
+            {pendingDocuments.length} document{" "}
+            {pendingDocuments.length === 1 ? "version" : "versions"} awaiting
+            review. These are produced documents, not delivery confirmations.
           </p>
         </div>
         <Badge tone="white">Based on workspace records</Badge>
@@ -177,6 +193,26 @@ export function Team({
                         · {pkgs.filter((p) => p.origin === "sample").length}{" "}
                         saved
                       </span>
+                      <div className="small-text muted">
+                        {
+                          (data.workProducts || [])
+                            .filter((product) => product.agentId === a.id)
+                            .flatMap((product) => product.versions)
+                            .filter(
+                              (version) =>
+                                version.status === "approved" && version.hasPdf,
+                            ).length
+                        }{" "}
+                        approved PDF versions ·{" "}
+                        {
+                          (data.workProducts || [])
+                            .filter((product) => product.agentId === a.id)
+                            .flatMap((product) => product.versions)
+                            .filter((version) => version.status === "pending")
+                            .length
+                        }{" "}
+                        documents in review
+                      </div>
                       <div className="small-text muted">
                         {
                           data.activities.filter(

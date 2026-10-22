@@ -1,5 +1,29 @@
 # Validation record
 
+## Administrative work products — October 21, 2026
+
+| Check | Result |
+| --- | --- |
+| `npm test` | 96 passed; 2 PostgreSQL-only checks skipped in the default PGlite run |
+| PostgreSQL 17 domain suite | 31/31 passed in isolated disposable databases |
+| `npm run typecheck` | Passed |
+| `npm run build` | Passed with document, PDF, and calendar routes included |
+| `npm run test:production` | Passed against compiled Next.js and disposable PostgreSQL; local health response 16 ms |
+| PDF rendering | Three-page sample and six-page long-content fixture rendered and every page visually inspected; no clipping or overlapping text |
+| Browser | Desktop and 390 px mobile document editor inspected; no console warnings/errors in the test tab |
+| `npm run test:ai:live -- --allow-live` | **SKIPPED**: no local `OPENAI_API_KEY`; live seller/briefing generation, rewriting, and transcription remain unverified |
+| Fresh dependency audit | Registry audit endpoint timed out; no fresh audit result claimed |
+
+The automated checks cover scoped source snapshots, facts versus general guidance, fabricated citations/dates/prices/confirmations, pending edits, stale revisions, explicit approval, real PDF rendering, rollback on missing/invalid PDF bytes, concurrent approval, durable retrieval after reopening storage, immutable approved versions, provider-free copied versions, retained evidence after source records change, and history ordering independent of sample timestamps. PostgreSQL readiness now checks migration 0005 without acquiring a migration lock.
+
+Production HTTP tests parse the downloaded PDF, check metadata/page structure/SHA256, verify inline and attachment responses and unauthorized denial, and confirm that edits or copies cannot mutate approved bytes. They also cover duplicate request replay, missing-provider responses without database writes, question/task execution and resolution, explicit calendar confirmation, invalid and daylight-saving-ambiguous times, UTC `.ics` exports for tasks and confirmed appointments, tentative-event rejection, stale scheduling conflicts, idempotent scheduling retries, and sample reset removing generated artifacts.
+
+Browser checks used a separate disposable production workspace. A seller checklist item was edited and saved, approved, and downloaded as a real PDF. A second editable version retained the first approved version. The same work appeared under Today, Review, the property, the client, and Team. Nested document dialogs closed correctly with Escape. Explicit task times produced a downloadable calendar file with the expected UTC interval; after a production restart, editing the saved schedule correctly prefilled its time zone and times and required confirmation again. Approving a message, task, and unanswered question saved three distinct records; copying the message did not mark contact complete. Task completion updated Today and property progress, and explicitly resolving the question changed its status while preserving history.
+
+Screenshots: [Approved PDF controls](screenshots/work-product-approved.png), [Mobile document review](screenshots/work-product-mobile.png). Generate the fictional standalone sample with `npx tsx scripts/render-sample-work-product.ts`; its output is intentionally untracked under `output/pdf/`.
+
+All permanent document bytes are stored in the database, not Render's filesystem. No external messages, CRM writes, or calendar bookings were performed. Existing shared-password access remains a protected sample/pilot, not production multi-user authorization. Hosted deployment status is checked separately after pushing; local checks alone do not establish a successful Render deployment.
+
 ## Friday workflow improvements — October 21, 2026
 
 | Check | Result |

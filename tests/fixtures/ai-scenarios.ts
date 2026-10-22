@@ -114,6 +114,7 @@ export function fictionalAIWorkspace(): WorkspaceData {
     commitments: [],
     recommendations: [],
     reviewHistory: [],
+    workProducts: [],
     capabilities: {
       ai: false,
       transcription: false,

@@ -4,6 +4,7 @@ import { Check } from "lucide-react";
 import type { WorkspaceData, Task } from "@/lib/types";
 import { shortDate } from "../ui";
 import { isOverdue } from "@/lib/workspace-insights";
+import { TaskCalendar } from "./calendar-actions";
 
 export function Progress({ done, total }: { done: number; total: number }) {
   return (
@@ -18,11 +19,15 @@ export function TaskRow({
   data,
   onToggle,
   onProperty,
+  onUpdate,
+  notify,
 }: {
   task: Task;
   data: WorkspaceData;
   onToggle: () => void;
   onProperty?: (id: string) => void;
+  onUpdate?: (data: WorkspaceData) => void;
+  notify?: (message: string) => void;
 }) {
   const p = data.properties.find((p) => p.id === task.propertyId);
   return (
@@ -43,6 +48,14 @@ export function TaskRow({
             task.detail
           )}
         </p>
+        {onUpdate && notify && (
+          <TaskCalendar
+            task={task}
+            data={data}
+            onUpdate={onUpdate}
+            notify={notify}
+          />
+        )}
       </div>
       <div className="task-meta">
         {task.priority === "high" && task.status !== "done" && (

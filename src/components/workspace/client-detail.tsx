@@ -6,6 +6,9 @@ import { Badge, Modal, SectionTitle, shortDate, time } from "../ui";
 import { CommitmentList } from "./commitments";
 import { TaskRow } from "./shared";
 import { orderedTasks } from "@/lib/workspace-insights";
+import { WorkProducts } from "./work-products";
+import { MessageActions } from "./message-actions";
+import { AppointmentCalendar } from "./calendar-actions";
 
 export function ClientDetail({
   client: c,
@@ -15,6 +18,8 @@ export function ClientDetail({
   onCommitment,
   onTask,
   onReview,
+  onUpdate,
+  notify,
 }: {
   client: Client;
   data: WorkspaceData;
@@ -23,11 +28,17 @@ export function ClientDetail({
   onCommitment: (item: Commitment) => void;
   onTask: (item: Task) => void;
   onReview: (id: string) => void;
+  onUpdate: (data: WorkspaceData) => void;
+  notify: (message: string) => void;
 }) {
   if (!c) return null;
-  const messages = data.activities.filter(
-    (a) => a.clientId === c.id && a.kind.includes("message"),
-  );
+  const messages = data.packages
+    .filter((pkg) => pkg.clientId === c.id)
+    .flatMap((pkg) =>
+      pkg.actions.filter(
+        (action) => action.kind === "message" && action.status === "approved",
+      ),
+    );
   const appts = data.appointments.filter((a) => a.clientId === c.id);
   const commitments = data.commitments.filter((item) => item.clientId === c.id);
   const tasks = orderedTasks(
@@ -73,8 +84,30 @@ export function ClientDetail({
             <small>
               {shortDate(a.startsAt)} · {time(a.startsAt)} · {a.status}
             </small>
+            <AppointmentCalendar appointment={a} />
+            <WorkProducts
+              data={data}
+              onUpdate={onUpdate}
+              notify={notify}
+              filter={{ appointmentId: a.id }}
+              context={{
+                kind: "appointment_briefing",
+                agentId: a.agentId,
+                clientId: a.clientId,
+                propertyId: a.propertyId,
+                appointmentId: a.id,
+              }}
+              title="Prepared briefing"
+            />
           </div>
         ))}
+        <WorkProducts
+          data={data}
+          onUpdate={onUpdate}
+          notify={notify}
+          filter={{ clientId: c.id }}
+          title="Client work products"
+        />
         {commitments.length > 0 && (
           <>
             <SectionTitle title="Commitments & unanswered questions" />
@@ -91,6 +124,8 @@ export function ClientDetail({
                 data={data}
                 onToggle={() => onTask(task)}
                 onProperty={onProperty}
+                onUpdate={onUpdate}
+                notify={notify}
               />
             ))}
           </>
@@ -155,7 +190,8 @@ export function ClientDetail({
             {messages.map((m) => (
               <div className="saved-message" key={m.id}>
                 <Badge tone="blue">Approved · not sent</Badge>
-                <p>{m.detail}</p>
+                <p>{m.body}</p>
+                <MessageActions body={m.body} notify={notify} />
               </div>
             ))}
           </>

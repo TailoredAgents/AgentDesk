@@ -432,6 +432,8 @@ export default function AgentDesk() {
               onFollowUp={setFollowUpId}
               onRefresh={() => prepareFollowUps()}
               refreshing={preparing}
+              onUpdate={applyData}
+              notify={notify}
             />
           )}
           {view === "review" && (
@@ -650,6 +652,8 @@ export default function AgentDesk() {
           onClose={() => setProperty(null)}
           onTask={toggleTask}
           onCommitment={toggleCommitment}
+          onUpdate={applyData}
+          notify={notify}
           onReview={(id) => {
             setProperty(null);
             review(id);
@@ -665,6 +669,8 @@ export default function AgentDesk() {
           client={data.clients.find((c) => c.id === client)!}
           data={data}
           onCommitment={toggleCommitment}
+          onUpdate={applyData}
+          notify={notify}
           onTask={toggleTask}
           onReview={(id) => {
             setClient(null);

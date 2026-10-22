@@ -39,5 +39,7 @@ export function reviewEffect(
         : "Create an open task linked to this client";
     case "listing_update":
       return "Add a note to the linked listing; do not change its stage";
+    case "question":
+      return "Track an unresolved client question linked to these records";
   }
 }

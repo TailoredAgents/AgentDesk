@@ -4,6 +4,8 @@
 
 AgentDesk turns a client conversation into coordinated work for an agent to review: a factual summary, an internal CRM note, a personal follow-up draft, listing tasks, and proposed property notes. The Today, Review, Listings, and Team views share one relational data layer. Approvals and task completion persist across refreshes.
 
+The Listing Coordinator also produces editable seller preparation packages with retained sources and version history. Explicit approval creates a downloadable PDF stored in PostgreSQL. Appointment briefings use the same work-product workflow on demand. Calendar files help agents use confirmed schedules in their existing tools; no separate messaging number or connected external account is required.
+
 The initial product runs one protected, fictional **Sample Workspace**, The Willow Collective, with six agents. It is a working foundation for a paid pilot, with a deliberately limited access model. Names, addresses, prices, schedules, and conversations are sample data. Its demonstration timeline is anchored to Friday, October 23, 2026, with appointment times displayed in Eastern time. Recommendations use that explicit sample date. Photography illustrates the fictional properties; see [ATTRIBUTIONS.md](ATTRIBUTIONS.md).
 
 ## Run locally
@@ -63,6 +65,16 @@ Relative weekday dates stay in the proposal text. New AI-generated tasks receive
 | Team leader presentation toggle                                              | Agent preview switches the selected human agent’s work and style; the leader toggle changes its display label. Neither grants permissions. |
 
 Record-based follow-up recommendations use open commitments, unresolved questions, and relevant tasks, with appointments and listing context as supporting evidence. Refresh & prepare generates missing proposals when live AI is configured. Existing proposals are reused, and a saved/approved message does not complete the underlying follow-up. Sarah, Michael, and Emily have linked fictional source records and saved example packages.
+
+## Completed administrative work
+
+- **Seller documents:** Open the linked work product in Review, the client record, or a listing. Edit its title, introduction, section headings, and checklist text. Recorded facts, requested work, open questions, and general suggestions remain distinct. Save pending edits or explicitly approve/reject the version. Approval renders and persists the PDF with its content and source snapshot; download it to share using normal tools.
+- **Versions and history:** Approved and rejected versions are immutable. New draft version copies a saved version without an AI call. Regenerate with AI creates a separate version from current authorized records. Original content, saved edits, decisions, and source snapshots remain accessible. A saved sample Sarah/Willow Lane document supports the full edit → approve → PDF demonstration without an API key.
+- **Calendar-ready actions:** Task reminders require a confirmed date, start time, end time, and time zone. A due date alone does not establish a schedule; start/end fields are initially blank. Confirmed appointments and confirmed task schedules export `.ics` files. The user must import/save the file in their calendar; no invitation is sent, external save claimed, or task automatically completed.
+- **Appointment preparation:** Prepare briefing is on demand from an appointment's actual client, property, conversation, task, and commitment records. It uses the same editable work-product and approval flow; nothing runs in the background.
+- **Approved communications:** Copy the approved message into the agent's existing phone or CRM. A selectable-text fallback is available when clipboard access is denied. Copying and downloading do not count as delivery or completed follow-up. Twilio and other messaging integrations remain unconnected.
+
+Today surfaces document versions awaiting review. Client and property records retain linked work products, and Team reports saved approved PDF versions and pending document versions. These are counts of administrative output, not proof of client delivery. PDFs are stored with their approved versions in PostgreSQL rather than Render's ephemeral filesystem.
 
 ## Configuration
 

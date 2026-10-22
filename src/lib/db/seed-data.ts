@@ -493,6 +493,13 @@ const action = (
   dueDate,
   status: "pending",
 });
+export const legacySarahTranscript = sampleConversations.find(
+  (item) => item.id === "conversation-sarah",
+)!.transcript;
+sampleConversations.find(
+  (item) => item.id === "conversation-sarah",
+)!.transcript +=
+  " Sarah also asked: “Should I leave the patio furniture out for the photos?” We have not resolved that question.";
 const sarahSummary =
   "Sarah is preparing 1420 Willow Lane for sale. Cleaning is booked for Monday, October 26. She requested photography for Tuesday afternoon, October 27; the photographer has not confirmed. Jordan will check availability, share the preparation checklist before the weekend, and follow up. A launch date has not been agreed.";
 export const samplePackages: WorkPackage[] = [
@@ -578,6 +585,14 @@ export const samplePackages: WorkPackage[] = [
         "Update the listing preparation notes",
         "Cleaning booked for Monday, October 26. Photography requested for Tuesday afternoon, October 27, pending confirmation. Launch date undecided.",
         "The cleaners are booked for Monday, October 26.",
+      ),
+      action(
+        "sarah-patio-question",
+        "question",
+        "Resolve Sarah’s patio furniture question",
+        "Sarah asked whether to leave the patio furniture out for the photos. Confirm the preparation recommendation with her; no answer is recorded yet.",
+        "Should I leave the patio furniture out for the photos?",
+        "uncertain",
       ),
     ],
     status: "pending",

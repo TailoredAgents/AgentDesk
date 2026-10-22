@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowUpRight,
   Check,
@@ -125,6 +126,9 @@ export function Empty({
     </div>
   );
 }
+const activeModals: HTMLDivElement[] = [];
+let beforeModalOverflow = "";
+
 export function Modal({
   title,
   subtitle,
@@ -139,14 +143,23 @@ export function Modal({
   wide?: boolean;
 }) {
   const panel = useRef<HTMLDivElement>(null);
+  const [target, setTarget] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setTarget(document.body);
+  }, []);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   useEffect(() => {
     const before = document.activeElement as HTMLElement;
-    const old = document.body.style.overflow;
+    const element = panel.current;
+    if (!element) return;
+    if (!activeModals.length)
+      beforeModalOverflow = document.body.style.overflow;
+    activeModals.push(element);
     document.body.style.overflow = "hidden";
     panel.current?.focus();
     function key(e: KeyboardEvent) {
+      if (activeModals.at(-1) !== element) return;
       if (e.key === "Escape") closeRef.current();
       if (e.key === "Tab") {
         const els = panel.current?.querySelectorAll<HTMLElement>(
@@ -170,12 +183,16 @@ export function Modal({
     }
     document.addEventListener("keydown", key);
     return () => {
-      document.body.style.overflow = old;
+      const index = activeModals.indexOf(element);
+      if (index !== -1) activeModals.splice(index, 1);
+      if (!activeModals.length)
+        document.body.style.overflow = beforeModalOverflow;
       document.removeEventListener("keydown", key);
-      before?.focus();
+      if (before?.isConnected) before.focus();
     };
-  }, []);
-  return (
+  }, [target]);
+  if (!target) return null;
+  return createPortal(
     <div
       className="modal-backdrop"
       onMouseDown={(e) => {
@@ -205,7 +222,8 @@ export function Modal({
         </header>
         {children}
       </div>
-    </div>
+    </div>,
+    target,
   );
 }
 export const money = (n: number) =>

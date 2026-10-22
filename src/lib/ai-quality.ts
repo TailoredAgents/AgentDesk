@@ -60,7 +60,7 @@ export function explicitSourceDates(source: string): DateMention[] {
           : null,
     });
   };
-  for (const match of source.matchAll(/\b(20\d{2}-\d{2}-\d{2})\b/g))
+  for (const match of source.matchAll(/\b(20\d{2}-\d{2}-\d{2})(?=\b|T)/g))
     add(match[1], match[0], match.index);
   for (const match of source.matchAll(
     /\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?\s*,?\s+(20\d{2})\b/gi,
@@ -140,6 +140,16 @@ export function assertSupportedDates(text: string, source: string) {
         "ungrounded_output",
       );
   }
+  const monthDays = (value: string) => {
+    const mentions = explicitSourceDates(value).map((date) => date.iso.slice(5));
+    for (const match of value.matchAll(/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b/gi)) {
+      const month = monthNames.findIndex((item) => item.startsWith(match[1].toLowerCase().slice(0, 3))) + 1;
+      mentions.push(`${String(month).padStart(2, "0")}-${match[2].padStart(2, "0")}`);
+    }
+    return mentions;
+  };
+  const sourceDays = new Set(monthDays(source));
+  for (const day of monthDays(text)) if (!sourceDays.has(day)) throw new ApiError(502, "The AI draft added a calendar day that is not supported by the source. Please try again.", "ungrounded_output");
   const clockTimes = (value: string) =>
     [
       ...value.matchAll(/\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b/gi),

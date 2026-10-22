@@ -159,6 +159,13 @@ export function deriveFollowUps(data: FollowUpData): FollowUpRecommendation[] {
             item.actions.some((action) => action.id === task.sourceActionId),
           )
           .map((task) => `task:${task.id}`),
+        ...commitments
+          .filter((commitment) =>
+            item.actions.some(
+              (action) => action.id === commitment.sourceActionId,
+            ),
+          )
+          .map((commitment) => `commitment:${commitment.id}`),
       ]);
       return signalIds.every((signal) => covered.has(signal));
     });

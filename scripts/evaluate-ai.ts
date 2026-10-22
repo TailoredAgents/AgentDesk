@@ -12,6 +12,8 @@ import {
   type GeneratedPackage,
 } from "../src/lib/ai";
 import { validateAudioUpload } from "../src/lib/audio";
+import { buildWorkProductContext } from "../src/lib/work-product-content";
+import { generateWorkProduct } from "../src/lib/work-product-ai";
 import { ApiError } from "../src/lib/auth";
 import type { WorkPackage } from "../src/lib/types";
 import {
@@ -271,6 +273,7 @@ async function main() {
           "The unresolved patio question is preserved",
           /patio/i.test(allText + generated.clarifications.join(" ")),
         );
+        check("The patio question becomes an explicit proposal for approval", generated.actions.some((action) => action.kind === "question" && /patio/i.test(`${action.title} ${action.body}`) && action.certainty === "uncertain" && action.dueDate === null));
         check(
           "Warm profile greeting is reflected",
           /^Hey\s*,?\s+Sarah\b/i.test(message.trim()),
@@ -440,6 +443,29 @@ async function main() {
     );
     return generated;
   });
+
+  // These records are created only in memory for evaluation, never in the application database.
+  data.conversations.push({ id: "eval-source-conversation", agentId: seller.agentId, clientId: seller.clientId, propertyId: seller.propertyId, title: "Fictional seller preparation source", transcript: seller.transcript, source: "note", createdAt: "2026-10-23T12:00:00Z" });
+  data.appointments.push({ id: "eval-appointment", agentId: seller.agentId, clientId: seller.clientId, propertyId: seller.propertyId, title: "Seller preparation review call", startsAt: "2026-10-23T14:00:00Z", endsAt: "2026-10-23T14:30:00Z", location: "Phone", status: "confirmed", briefing: "Discuss the preparation checklist and the unresolved patio furniture question. Photography remains unconfirmed." });
+  for (const kind of ["seller_preparation", "appointment_briefing"] as const) {
+    await runCase(`work-product:${kind}`, async (check) => {
+      const context = buildWorkProductContext(data, { kind, agentId: seller.agentId, clientId: seller.clientId, propertyId: seller.propertyId, sourceConversationId: "eval-source-conversation", ...(kind === "appointment_briefing" ? { appointmentId: "eval-appointment" } : {}) });
+      const content = await generateWorkProduct(context);
+      const items = content.sections.flatMap((section) => section.items);
+      check("Every recorded item retains exact source evidence", items.filter((item) => item.certainty !== "general").every((item) => context.snapshot.sources.some((source) => source.id === item.sourceId && source.text.includes(item.sourceQuote ?? "MISSING"))));
+      check("General suggestions are separated from recorded client agreements", content.sections.some((section) => section.kind === "general_guidance") && items.filter((item) => item.certainty === "general").every((item) => item.sourceId === null && item.sourceQuote === null));
+      check("Photographer uncertainty remains visible", items.some((item) => /photo/i.test(item.text) && item.certainty !== "confirmed" && /confirm|request|uncertain|availability|await/i.test(item.text)));
+      check("The unresolved patio decision is retained", content.sections.some((section) => section.kind === "open_questions" && section.items.some((item) => /patio/i.test(item.text) && item.certainty === "uncertain")));
+      if (kind === "seller_preparation") {
+        check("Confirmed cleaning remains a recorded fact", content.sections.some((section) => section.kind === "recorded_facts" && section.items.some((item) => /clean/i.test(item.text) && item.certainty === "confirmed")));
+        check("Useful practical preparation advice is produced", items.filter((item) => item.certainty === "general").length >= 3);
+      } else {
+        check("The selected appointment record is used", items.some((item) => item.sourceId === "appointment:eval-appointment"));
+        check("Client context informs the briefing", /checklist|patio|text messages/i.test(items.map((item) => item.text).join(" ")));
+      }
+      return content;
+    });
+  }
 
   const transcription = await runCase(
     "audio:fictional-transcription",

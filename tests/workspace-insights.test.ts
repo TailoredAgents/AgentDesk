@@ -93,6 +93,7 @@ test("team insights separate saved sample work from actual live AI usage", () =>
     commitments: [],
     recommendations: [],
     reviewHistory: [],
+    workProducts: [],
     capabilities: {
       ai: false,
       transcription: false,

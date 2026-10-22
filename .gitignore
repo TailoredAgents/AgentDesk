@@ -9,3 +9,5 @@ playwright-report/
 *.log
 
 .agentdesk/
+tmp/
+output/

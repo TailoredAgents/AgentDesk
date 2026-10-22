@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
@@ -22,9 +22,26 @@ import {
   resetSampleWorkspace,
   SAMPLE_RESET_CONFIRMATION,
   findConversationPackageByRequestId,
+  createWorkProductDraft,
+  findWorkProductByRequestId,
+  editWorkProductVersion,
+  reviewWorkProductVersion,
+  getWorkProductPdf,
+  setTaskCalendar,
+  type CreateWorkProductInput,
   type GeneratedPackage,
 } from "../src/lib/repository";
 import { deriveFollowUps } from "../src/lib/follow-ups";
+import {
+  buildWorkProductSnapshot,
+  buildSavedSellerContent,
+} from "../src/lib/work-product-content";
+import { renderWorkProductPdf } from "../src/lib/work-product-pdf";
+import { confirmedTaskSchedule } from "../src/lib/calendar";
+import type {
+  WorkProduct,
+  WorkProductVersion,
+} from "../src/lib/work-product-types";
 
 let temporaryDirectory: string;
 before(async () => {
@@ -73,7 +90,9 @@ after(async () => {
 });
 
 const generated = (
-  kinds: Array<"summary" | "crm_note" | "message" | "task" | "listing_update">,
+  kinds: Array<
+    "summary" | "crm_note" | "message" | "task" | "listing_update" | "question"
+  >,
 ): GeneratedPackage => ({
   summary: "Sarah requested a preparation checklist.",
   facts: [
@@ -126,6 +145,22 @@ test("sample workspace is coherent and seed preserves saved records", async () =
     );
   assert.equal(workspace.workspace.referenceDate, "2026-10-23");
   assert.equal(workspace.packages.length, 5);
+  const patioProposal = workspace.packages
+    .find((pkg) => pkg.id === "package-sarah")!
+    .actions.find((action) => action.kind === "question")!;
+  assert.ok(patioProposal);
+  assert.equal(patioProposal.status, "pending");
+  assert.ok(
+    workspace.conversations
+      .find((item) => item.id === "conversation-sarah")!
+      .transcript.includes(patioProposal.sourceQuote),
+  );
+  assert.equal(
+    workspace.commitments.some(
+      (item) => item.sourceActionId === patioProposal.id,
+    ),
+    false,
+  );
   assert.equal(
     workspace.appointments.filter(
       (appointment) =>
@@ -1041,6 +1076,600 @@ test("concurrent mutations publish coherent monotonic snapshots and invalidate o
   assert.equal((await getWorkspace()).workspace.revision, revision + 4);
 });
 
+const sellerLinks = {
+  kind: "seller_preparation" as const,
+  agentId: "jordan",
+  clientId: "sarah",
+  propertyId: "willow",
+  appointmentId: null,
+  sourceConversationId: "conversation-sarah",
+  sourcePackageId: "package-sarah",
+};
+async function sellerDraft(
+  overrides: Partial<CreateWorkProductInput> = {},
+): Promise<CreateWorkProductInput> {
+  const state = await getWorkspace();
+  const snapshot = buildWorkProductSnapshot(state, sellerLinks);
+  return {
+    ...sellerLinks,
+    requestId: randomUUID(),
+    requestFingerprint: "a".repeat(64),
+    content: buildSavedSellerContent(snapshot),
+    snapshot,
+    origin: "sample",
+    expectedWorkspaceRevision: state.workspace.revision!,
+    ...overrides,
+  };
+}
+async function pdfFor(
+  product: WorkProduct,
+  version: WorkProductVersion,
+  content = version.content,
+) {
+  const bytes = await renderWorkProductPdf({
+    productId: product.id,
+    kind: product.kind,
+    version: version.version,
+    content,
+    snapshot: version.snapshot,
+    createdAt: version.createdAt,
+  });
+  return {
+    pdfBase64: bytes.toString("base64"),
+    pdfSha256: createHash("sha256").update(bytes).digest("hex"),
+  };
+}
+test("saved seller work product retains linked sources and a clearly pending sample without a PDF", async () => {
+  const state = await getWorkspace();
+  const product = state.workProducts.find(
+    (item) => item.id === "product-sarah-preparation",
+  )!;
+  assert.equal(product.agentId, "jordan");
+  assert.equal(product.clientId, "sarah");
+  assert.equal(product.propertyId, "willow");
+  assert.equal(product.sourcePackageId, "package-sarah");
+  const version = product.versions[0];
+  assert.equal(version.origin, "sample");
+  assert.equal(version.status, "pending");
+  assert.equal(version.hasPdf, false);
+  assert.equal(version.history[0].event, "created");
+  assert.deepEqual(version.content, version.originalContent);
+  for (const section of version.content.sections)
+    for (const item of section.items) {
+      if (item.certainty === "general") {
+        assert.equal(item.sourceId, null);
+        assert.equal(item.sourceQuote, null);
+      } else
+        assert.ok(
+          version.snapshot.sources
+            .find((source) => source.id === item.sourceId)
+            ?.text.includes(item.sourceQuote!),
+        );
+    }
+  await assert.rejects(
+    getWorkProductPdf(product.id, version.id),
+    domainError("NOT_FOUND"),
+  );
+});
+test("work product creation is scoped, source-verified, stale-safe, and request-idempotent under concurrency", async () => {
+  const input = await sellerDraft();
+  const results = await Promise.all([
+    createWorkProductDraft(input),
+    createWorkProductDraft(input),
+    createWorkProductDraft(input),
+  ]);
+  assert.equal(new Set(results.map((item) => item.versionId)).size, 1);
+  assert.equal(
+    (await getWorkspace()).workspace.revision,
+    input.expectedWorkspaceRevision + 1,
+  );
+  assert.deepEqual(await findWorkProductByRequestId(input.requestId), {
+    productId: results[0].productId,
+    versionId: results[0].versionId,
+    requestFingerprint: input.requestFingerprint,
+  });
+  assert.equal(
+    await findWorkProductByRequestId(input.requestId, {
+      workspaceId: "second-tenant",
+    }),
+    null,
+  );
+  await assert.rejects(
+    createWorkProductDraft({ ...input, requestFingerprint: "b".repeat(64) }),
+    domainError("REQUEST_CONFLICT"),
+  );
+  await assert.rejects(
+    createWorkProductDraft({ ...input, propertyId: "oak" }),
+    domainError("REQUEST_CONFLICT"),
+  );
+  await assert.rejects(
+    createWorkProductDraft(await sellerDraft({ propertyId: "oak" })),
+    domainError("INVALID_LINK"),
+  );
+  const forged = await sellerDraft();
+  forged.snapshot.agent.name = "A different person";
+  await assert.rejects(
+    createWorkProductDraft(forged),
+    domainError("STALE_SOURCE"),
+  );
+  const stale = await sellerDraft();
+  const data = await getWorkspace();
+  await updateAgentStyle("jordan", {
+    ...data.agents.find((item) => item.id === "jordan")!.style,
+    signoff: "A changed profile while preparing.",
+  });
+  await assert.rejects(
+    createWorkProductDraft(stale),
+    domainError("WORKSPACE_CHANGED"),
+  );
+  await assert.rejects(
+    createWorkProductDraft(await sellerDraft(), {
+      workspaceId: "second-tenant",
+    }),
+    domainError("WORKSPACE_CHANGED"),
+  );
+});
+test("concurrent draft edits preserve the original and reject conflicting or fabricated citations", async () => {
+  const input = await sellerDraft();
+  const created = await createWorkProductDraft(input);
+  const a = {
+    ...input.content,
+    introduction:
+      "Sarah, please review this edited preparation guide with Jordan before making arrangements.",
+  };
+  const b = {
+    ...input.content,
+    introduction:
+      "Sarah, this competing edit must not overwrite another saved change.",
+  };
+  const edits = await Promise.allSettled([
+    editWorkProductVersion(created.productId, created.versionId, {
+      content: a,
+      expectedEditRevision: 0,
+    }),
+    editWorkProductVersion(created.productId, created.versionId, {
+      content: b,
+      expectedEditRevision: 0,
+    }),
+  ]);
+  assert.equal(edits.filter((item) => item.status === "fulfilled").length, 1);
+  assert.equal(
+    edits.filter(
+      (item) =>
+        item.status === "rejected" && domainError("EDIT_CONFLICT")(item.reason),
+    ).length,
+    1,
+  );
+  const state = await getWorkspace();
+  const version = state.workProducts.find(
+    (item) => item.id === created.productId,
+  )!.versions[0];
+  assert.equal(version.editRevision, 1);
+  assert.deepEqual(version.originalContent, input.content);
+  assert.deepEqual(
+    version.history.map((item) => item.event),
+    ["created", "edited"],
+  );
+  const forged = structuredClone(version.content);
+  forged.sections[0].items[0].sourceQuote = "This quote was never recorded.";
+  await assert.rejects(
+    editWorkProductVersion(created.productId, version.id, {
+      content: forged,
+      expectedEditRevision: 1,
+    }),
+  );
+  await assert.rejects(
+    editWorkProductVersion(
+      created.productId,
+      version.id,
+      { content: a, expectedEditRevision: 1 },
+      { workspaceId: "second-tenant" },
+    ),
+    domainError("NOT_FOUND"),
+  );
+  assert.equal(
+    (await getWorkspace()).workspace.revision,
+    state.workspace.revision,
+  );
+});
+test("document history follows revisions and lifecycle despite reversed audit timestamps", async () => {
+  const input = await sellerDraft();
+  const created = await createWorkProductDraft(input);
+  const edited = {
+    ...input.content,
+    introduction: "Sarah, please review this guide and its open questions with Jordan.",
+  };
+  await editWorkProductVersion(created.productId, created.versionId, {
+    content: edited,
+    expectedEditRevision: 0,
+  });
+  await reviewWorkProductVersion(created.productId, created.versionId, {
+    decision: "rejected",
+    content: edited,
+    expectedEditRevision: 1,
+  });
+  const { db } = await getDatabase();
+  await db.update(tables.workProductAudits).set({
+    createdAt: sql`(CASE ${tables.workProductAudits.event}
+      WHEN 'created' THEN '2099-01-03T00:00:00.000Z'
+      WHEN 'edited' THEN '2099-01-02T00:00:00.000Z'
+      ELSE '2099-01-01T00:00:00.000Z' END)::timestamptz`,
+  }).where(eq(tables.workProductAudits.versionId, created.versionId));
+  const version = (await getWorkspace()).workProducts.find(
+    (item) => item.id === created.productId,
+  )!.versions[0];
+  assert.deepEqual(
+    version.history.map(({ event, editRevision }) => ({ event, editRevision })),
+    [
+      { event: "created", editRevision: 0 },
+      { event: "edited", editRevision: 1 },
+      { event: "rejected", editRevision: 1 },
+    ],
+  );
+  assert.deepEqual(version.history[0].content, input.content);
+  assert.deepEqual(version.history[1].content, edited);
+});
+test("PDF approval is atomic, durable, idempotent, and immutable across new versions", async () => {
+  const created = await createWorkProductDraft(await sellerDraft());
+  const parent = created.workspace.workProducts.find(
+    (item) => item.id === created.productId,
+  )!;
+  const version = parent.versions[0];
+  const edited = {
+    ...version.content,
+    introduction:
+      "Sarah, Jordan has reviewed this personalized guide. Please use it to prepare and raise any outstanding questions.",
+  };
+  const pdf = await pdfFor(parent, version, edited);
+  assert.ok(Buffer.from(pdf.pdfBase64, "base64").length > 5000);
+  const decision = {
+    decision: "approved" as const,
+    expectedEditRevision: 0,
+    content: edited,
+    ...pdf,
+  };
+  const { db } = await getDatabase();
+  await db.execute(
+    sql`ALTER TABLE work_product_versions ADD CONSTRAINT test_block_approval CHECK(status <> 'approved') NOT VALID`,
+  );
+  try {
+    await assert.rejects(
+      reviewWorkProductVersion(parent.id, version.id, decision),
+    );
+  } finally {
+    await db.execute(
+      sql`ALTER TABLE work_product_versions DROP CONSTRAINT test_block_approval`,
+    );
+  }
+  const unchanged = await getWorkspace();
+  assert.equal(
+    unchanged.workspace.revision,
+    created.workspace.workspace.revision,
+  );
+  assert.deepEqual(
+    unchanged.workProducts.find((item) => item.id === parent.id),
+    parent,
+  );
+  await Promise.all([
+    reviewWorkProductVersion(parent.id, version.id, decision),
+    reviewWorkProductVersion(parent.id, version.id, decision),
+  ]);
+  const after = await getWorkspace();
+  const approved = after.workProducts.find((item) => item.id === parent.id)!
+    .versions[0];
+  assert.equal(approved.status, "approved");
+  assert.equal(approved.hasPdf, true);
+  assert.equal(approved.pdfSha256, pdf.pdfSha256);
+  assert.equal(approved.editRevision, 1);
+  assert.deepEqual(approved.originalContent, version.originalContent);
+  assert.deepEqual(
+    approved.history.map((item) => item.event),
+    ["created", "edited", "approved"],
+  );
+  assert.equal(
+    after.workspace.revision,
+    created.workspace.workspace.revision! + 1,
+  );
+  assert.equal(JSON.stringify(after).includes('"pdfBase64"'), false);
+  const bytes = await getWorkProductPdf(parent.id, version.id);
+  assert.equal(bytes.pdfBase64, pdf.pdfBase64);
+  await closeDatabase();
+  assert.equal(
+    (await getWorkProductPdf(parent.id, version.id)).pdfBase64,
+    pdf.pdfBase64,
+  );
+  await reviewWorkProductVersion(parent.id, version.id, {
+    decision: "approved",
+    expectedEditRevision: 0,
+    content: edited,
+  });
+  assert.equal(
+    (await getWorkspace()).workspace.revision,
+    after.workspace.revision,
+  );
+  await assert.rejects(
+    editWorkProductVersion(parent.id, version.id, {
+      content: edited,
+      expectedEditRevision: 1,
+    }),
+    domainError("ALREADY_REVIEWED"),
+  );
+  await assert.rejects(
+    reviewWorkProductVersion(parent.id, version.id, {
+      decision: "rejected",
+      expectedEditRevision: 1,
+    }),
+    domainError("ALREADY_REVIEWED"),
+  );
+  await assert.rejects(
+    getWorkProductPdf(parent.id, version.id, { workspaceId: "second-tenant" }),
+    domainError("NOT_FOUND"),
+  );
+  const copy = await createWorkProductDraft(
+    await sellerDraft({
+      productId: parent.id,
+      copyVersionId: approved.id,
+      content: approved.content,
+    }),
+  );
+  const versions = copy.workspace.workProducts.find(
+    (item) => item.id === parent.id,
+  )!.versions;
+  assert.equal(versions.length, 2);
+  assert.equal(versions[0].version, 2);
+  assert.equal(versions[0].status, "pending");
+  assert.deepEqual(versions[1], approved);
+  assert.equal(
+    (await getWorkProductPdf(parent.id, version.id)).pdfBase64,
+    pdf.pdfBase64,
+  );
+});
+test("manual document copies retain historical citations after source records change; regeneration requires fresh evidence", async () => {
+  await updateTask("task-willow-staging", "open");
+  const input = await sellerDraft();
+  const taskSource = input.snapshot.sources.find((source) => source.id === "task:task-willow-staging")!;
+  assert.match(taskSource.text, /Status: open/);
+  input.content.sections.find((section) => section.kind === "next_steps")!.items.push({
+    text: "Review staging recommendations before preparing the checklist.", certainty: "requested", sourceId: taskSource.id, sourceQuote: taskSource.text,
+  });
+  const created = await createWorkProductDraft(input);
+  const original = created.workspace.workProducts.find((product) => product.id === created.productId)!.versions[0];
+  const changed = await updateTask("task-willow-staging", "done");
+  const fresh = buildWorkProductSnapshot(changed, sellerLinks);
+  assert.equal(fresh.sources.find((source) => source.id === taskSource.id)!.text.includes(taskSource.text), false);
+  const copiedInput = await sellerDraft({
+    productId: created.productId, copyVersionId: original.id, content: original.content, snapshot: original.snapshot,
+  });
+  const copied = await createWorkProductDraft(copiedInput);
+  const version = copied.workspace.workProducts.find((product) => product.id === created.productId)!.versions[0];
+  assert.deepEqual(version.snapshot, original.snapshot);
+  assert.deepEqual(version.content, original.content);
+  assert.match(version.history[0].actor, /copied retained version/);
+  assert.equal(version.status, "pending");
+  const currentRevision = copied.workspace.workspace.revision!;
+  await assert.rejects(createWorkProductDraft({
+    ...copiedInput, requestId: randomUUID(), snapshot: fresh, expectedWorkspaceRevision: currentRevision,
+  }), domainError("STALE_SOURCE"));
+  await assert.rejects(createWorkProductDraft({
+    ...copiedInput, requestId: randomUUID(), copyVersionId: undefined, expectedWorkspaceRevision: currentRevision,
+  }), domainError("STALE_SOURCE"));
+  assert.equal((await getWorkspace()).workspace.revision, currentRevision);
+});
+
+test("a PDF prepared before a conflicting edit is rejected and rejection never creates a PDF", async () => {
+  const created = await createWorkProductDraft(await sellerDraft());
+  const parent = created.workspace.workProducts.find(
+    (item) => item.id === created.productId,
+  )!;
+  const version = parent.versions[0];
+  const pdf = await pdfFor(parent, version);
+  await assert.rejects(
+    reviewWorkProductVersion(parent.id, version.id, {
+      decision: "approved",
+      expectedEditRevision: 0,
+    }),
+    domainError("PDF_REQUIRED"),
+  );
+  await assert.rejects(
+    reviewWorkProductVersion(parent.id, version.id, {
+      decision: "approved",
+      expectedEditRevision: 0,
+      ...pdf,
+      pdfSha256: "0".repeat(64),
+    }),
+    domainError("INVALID_PDF"),
+  );
+  const edited = {
+    ...version.content,
+    introduction:
+      "This edit was saved while a prior document was rendering. The earlier bytes must not become the approved document.",
+  };
+  await editWorkProductVersion(parent.id, version.id, {
+    content: edited,
+    expectedEditRevision: 0,
+  });
+  await assert.rejects(
+    reviewWorkProductVersion(parent.id, version.id, {
+      decision: "approved",
+      expectedEditRevision: 0,
+      ...pdf,
+    }),
+    domainError("EDIT_CONFLICT"),
+  );
+  const rejected = await reviewWorkProductVersion(parent.id, version.id, {
+    decision: "rejected",
+    expectedEditRevision: 1,
+  });
+  const retry = await reviewWorkProductVersion(parent.id, version.id, {
+    decision: "rejected",
+    expectedEditRevision: 1,
+  });
+  assert.equal(retry.workspace.revision, rejected.workspace.revision);
+  assert.equal(
+    rejected.workProducts.find((item) => item.id === parent.id)!.versions[0]
+      .hasPdf,
+    false,
+  );
+  await assert.rejects(
+    getWorkProductPdf(parent.id, version.id),
+    domainError("NOT_FOUND"),
+  );
+});
+test("approved question actions create one scoped unresolved record and resolution is explicit", async () => {
+  const created = await createConversationPackage(
+    {
+      ...conversationInput,
+      title: "Sarah’s furniture question",
+      transcript: "Sarah asked: Should I move the patio furniture?",
+    },
+    {
+      ...generated(["question"]),
+      actions: [
+        {
+          ...generated(["question"]).actions[0],
+          title: "Patio furniture question",
+          body: "Should Sarah move the patio furniture?",
+          sourceQuote: "Should I move the patio furniture?",
+          certainty: "uncertain",
+        },
+      ],
+    },
+  );
+  const action = created.package.actions[0];
+  const decision = {
+    decisions: [
+      { id: action.id, status: "approved" as const, body: action.body },
+    ],
+  };
+  await Promise.all([
+    reviewPackage(created.package.id, decision),
+    reviewPackage(created.package.id, decision),
+  ]);
+  const state = await getWorkspace();
+  const questions = state.commitments.filter(
+    (item) => item.sourceActionId === action.id,
+  );
+  assert.equal(questions.length, 1);
+  assert.equal(questions[0].kind, "question");
+  assert.equal(questions[0].status, "open");
+  assert.equal(questions[0].clientId, "sarah");
+  assert.equal(questions[0].propertyId, "willow");
+  assert.equal(questions[0].conversationId, created.conversation.id);
+  const resolved = await updateCommitment(questions[0].id, "resolved");
+  assert.equal(
+    resolved.commitments.find((item) => item.id === questions[0].id)!.status,
+    "resolved",
+  );
+});
+test("calendar schedules require complete confirmed instants and remain scoped, durable and idempotent", async () => {
+  const state = await getWorkspace();
+  const schedule = {
+    startsAt: "2026-10-26T15:00:00Z",
+    endsAt: "2026-10-26T15:30:00Z",
+    timeZone: "America/New_York",
+    confirmedAt: new Date().toISOString(),
+    confirmedBy: "Workspace reviewer",
+  };
+  await assert.rejects(
+    setTaskCalendar("task-willow-disclosure", {
+      ...schedule,
+      endsAt: schedule.startsAt,
+    }),
+  );
+  await assert.rejects(
+    setTaskCalendar("task-willow-disclosure", {
+      ...schedule,
+      timeZone: "Unreal/Timezone",
+    }),
+  );
+  await assert.rejects(
+    setTaskCalendar("task-willow-disclosure", {
+      ...schedule,
+      startsAt: "2026-10-26",
+    }),
+  );
+  await assert.rejects(
+    setTaskCalendar("task-willow-disclosure", { ...schedule, confirmedBy: "" }),
+  );
+  await assert.rejects(
+    setTaskCalendar("task-willow-disclosure", schedule, undefined, {
+      workspaceId: "second-tenant",
+    }),
+    domainError("NOT_FOUND"),
+  );
+  const saved = await setTaskCalendar(
+    "task-willow-disclosure",
+    schedule,
+    state.workspace.revision,
+  );
+  assert.deepEqual(
+    saved.tasks.find((item) => item.id === "task-willow-disclosure")!
+      .calendarSchedule,
+    schedule,
+  );
+  const retry = await setTaskCalendar(
+    "task-willow-disclosure",
+    schedule,
+    state.workspace.revision,
+  );
+  assert.equal(retry.workspace.revision, saved.workspace.revision);
+  // A real HTTP retry builds fresh confirmation metadata even when its effective
+  // schedule and original optimistic revision are unchanged.
+  const routeRetry = confirmedTaskSchedule({ date: "2026-10-26", startTime: "11:00", endTime: "11:30", timeZone: "America/New_York", confirmed: true, expectedWorkspaceRevision: state.workspace.revision! }, "2026-10-22T15:00:00Z");
+  const retriedFromRoute = await setTaskCalendar("task-willow-disclosure", routeRetry, state.workspace.revision);
+  assert.equal(retriedFromRoute.workspace.revision, saved.workspace.revision);
+  assert.deepEqual(retriedFromRoute.tasks.find((task) => task.id === "task-willow-disclosure")!.calendarSchedule, schedule);
+  assert.deepEqual(retriedFromRoute.activities, saved.activities);
+  await assert.rejects(
+    setTaskCalendar(
+      "task-willow-disclosure",
+      { ...schedule, endsAt: "2026-10-26T16:00:00Z" },
+      state.workspace.revision,
+    ),
+    domainError("WORKSPACE_CHANGED"),
+  );
+  assert.deepEqual(saved.appointments, state.appointments);
+  assert.match(
+    saved.activities.find((item) => item.kind === "task_calendar_prepared")!
+      .detail,
+    /No external calendar event/,
+  );
+  await closeDatabase();
+  assert.deepEqual(
+    (await getWorkspace()).tasks.find(
+      (item) => item.id === "task-willow-disclosure",
+    )!.calendarSchedule,
+    schedule,
+  );
+});
+test("sample restore removes prior document artifacts and schedules while preserving other workspaces", async () => {
+  const previous = await getWorkspace();
+  const approved = previous.workProducts.flatMap((product) =>
+    product.versions
+      .filter((version) => version.status === "approved")
+      .map((version) => ({ product, version })),
+  )[0];
+  assert.ok(approved);
+  const other = await getWorkspace({ workspaceId: "second-tenant" });
+  const restored = await resetSampleWorkspace(SAMPLE_RESET_CONFIRMATION);
+  assert.equal(restored.workProducts.length, 1);
+  assert.equal(restored.workProducts[0].versions.length, 1);
+  assert.equal(restored.workProducts[0].versions[0].status, "pending");
+  assert.equal(restored.workProducts[0].versions[0].hasPdf, false);
+  assert.equal(
+    restored.tasks.some((task) => task.calendarSchedule),
+    false,
+  );
+  await assert.rejects(
+    getWorkProductPdf(approved.product.id, approved.version.id),
+    domainError("NOT_FOUND"),
+  );
+  assert.deepEqual(await getWorkspace({ workspaceId: "second-tenant" }), other);
+  const { db } = await getDatabase();
+  assert.equal((await db.select().from(tables.workProductVersions)).length, 1);
+  assert.equal((await db.select().from(tables.workProductAudits)).length, 1);
+});
+
 test(
   "production initialization and readiness do not wait on the migration advisory lock",
   { skip: !process.env.TEST_DATABASE_URL },
@@ -1068,6 +1697,25 @@ test(
       await closeDatabase();
       Object.assign(process.env, { NODE_ENV: "test" });
     }
+  },
+);
+
+test(
+  "production readiness rejects a database missing the work-product migration marker",
+  { skip: !process.env.TEST_DATABASE_URL },
+  async () => {
+    const { db } = await getDatabase();
+    await db.execute(
+      sql`UPDATE agentdesk_migrations SET name = 'test_missing_work_products.sql' WHERE name = '0005_work_products.sql'`,
+    );
+    try {
+      await assert.rejects(probeReadiness(), /not ready/);
+    } finally {
+      await db.execute(
+        sql`UPDATE agentdesk_migrations SET name = '0005_work_products.sql' WHERE name = 'test_missing_work_products.sql'`,
+      );
+    }
+    assert.equal((await probeReadiness()).database, "ok");
   },
 );
 

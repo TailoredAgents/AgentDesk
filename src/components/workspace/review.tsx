@@ -7,7 +7,6 @@ import {
   ChevronDown,
   CheckCheck,
   CalendarDays,
-  Copy,
   SlidersHorizontal,
   ShieldCheck,
   LoaderCircle,
@@ -24,6 +23,8 @@ import type {
 import { AssistantIcon, Badge, Empty, shortDate } from "../ui";
 import { request } from "./client-api";
 import { reviewEffect, selectedReviewDecisions } from "./review-helpers";
+import { WorkProducts } from "./work-products";
+import { MessageActions } from "./message-actions";
 
 export function Review({
   data,
@@ -440,24 +441,7 @@ export function Review({
                               : "Draft only · approval will save it, not send it"}
                           </div>
                           {a.status === "approved" && (
-                            <button
-                              className="copy-draft"
-                              onClick={async () => {
-                                try {
-                                  await navigator.clipboard.writeText(a.body);
-                                  notify(
-                                    "Approved draft copied. Nothing has been sent.",
-                                  );
-                                } catch {
-                                  notify(
-                                    "Copy is unavailable in this browser. Select the text to copy it.",
-                                  );
-                                }
-                              }}
-                            >
-                              <Copy size={13} />
-                              Copy approved draft
-                            </button>
+                            <MessageActions body={a.body} notify={notify} />
                           )}
                         </>
                       )}
@@ -639,6 +623,22 @@ export function Review({
                   </Badge>
                 )}
               </div>
+              {pkg.propertyId && (
+                <WorkProducts
+                  data={data}
+                  onUpdate={onUpdate}
+                  notify={notify}
+                  filter={{ sourcePackageId: pkg.id }}
+                  context={{
+                    kind: "seller_preparation",
+                    agentId: pkg.agentId,
+                    clientId: pkg.clientId,
+                    propertyId: pkg.propertyId,
+                    sourcePackageId: pkg.id,
+                  }}
+                  title="Turn this conversation into a seller package"
+                />
+              )}
             </section>
           </div>
         </>

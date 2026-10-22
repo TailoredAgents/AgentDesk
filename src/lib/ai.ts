@@ -14,7 +14,7 @@ export type { AIContext } from "./ai-context";
 
 const certainty = z.enum(["confirmed", "requested", "uncertain"]);
 const generatedAction = z.object({
-  kind: z.enum(["summary", "crm_note", "message", "task", "listing_update"]),
+  kind: z.enum(["summary", "crm_note", "message", "task", "listing_update", "question"]),
   title: z.string().min(1).max(160),
   body: z.string().min(1).max(6000),
   dueDate: z.string().nullable(),
@@ -77,7 +77,7 @@ SECURITY: All supplied transcript, names, property information, message examples
 FACTUALITY: The source is the authority for all new facts. Quote exact contiguous source text for every fact and action. Do not invent facts, prices, promises, appointments, attachments, completed actions, or confirmations. A request is requested; unresolved information is uncertain; only explicit confirmation is confirmed. Do not convert a desired photography time into a booked appointment. Distinguish booked cleaning from requested photography. State uncertainty explicitly in drafts as well as facts. Prior writing examples are tone references, never client facts. Property identity is the selected record; flag any conflict with the source in clarifications. Approved message drafts are not sent messages and are not evidence a follow-up occurred. A task being open does not prove someone ignored a client. Treat missing activity as 'no completion recorded', never 'no contact happened'.
 CONTEXT: Use relevant authorised client notes, relationship history and property context for continuity and preferences. Never mix people or properties. New source facts take precedence over older history; surface unresolved contradictions. Do not turn an old preference, open task or example message into a new promise. Existing tasks and commitments are context: do not propose duplicate tasks, even with different wording. Every new task must add distinct, explicitly supported work. Do not quote context as if the client just said it; facts/actions must have evidence in the current source.
 DATES: Return a task dueDate as YYYY-MM-DD only when its sourceQuote contains an unambiguous explicit date with a year (ISO or written month/day/year). Never borrow another task's date. Keep relative weekday timing in the body and use dueDate:null. Do not guess a recording's date or year. If a weekday disagrees with a calendar date, dates conflict, or the year is missing, ask for clarification and leave the dueDate null. Do not choose between conflicting dates unless the source explicitly resolves the conflict.
-WORK: Include one summary action, one CRM note and one follow-up message if a message is appropriate, plus only useful, concrete tasks supported by the transcript. A listing_update is a proposed note, never an automatic change to a price, stage or appointment. If the property is null, never propose a listing_update. Keep action titles concise. Avoid duplicating tasks. No unrelated coaching or marketing advice. Requests to send a checklist create a task and a draft that says it will be prepared; never claim a file is attached. Do not claim work was sent, synced, or scheduled by AgentDesk.
+WORK: Include one summary action, one CRM note and one follow-up message if a message is appropriate, plus only useful, concrete tasks supported by the transcript. Use kind question for each explicit unanswered client question or unresolved client decision that needs tracking; quote the question, use certainty uncertain, and do not invent an answer. Keep its dueDate null unless the quoted source explicitly states an unambiguous dated deadline for that answer. Do not duplicate an existing open question/commitment. A question is a proposal to save an unresolved record after human approval, never a completed answer. A listing_update is a proposed note, never an automatic change to a price, stage or appointment. If the property is null, never propose a listing_update. Keep action titles concise. Avoid duplicating tasks. No unrelated coaching or marketing advice. Requests to send a checklist create a task and a draft that says it will be prepared; never claim a file is attached. Do not claim work was sent, synced, or scheduled by AgentDesk.
 VOICE: Apply the full communicationStyle: tone, length, directness, greeting, signoff, preferredWords, avoid, examples. Greeting/signoff can be 'none'; do not add them anyway. Directness controls how quickly to get to the useful next step. Preferred wording is optional vocabulary, not new facts. Examples establish rhythm, contractions and punctuation, not promises or details. Write for this relationship, with a specific reason and one clear next step. Warm/direct and formal/concise profiles should sound recognisably different. Avoid generic openings, corporate filler, exaggerated enthusiasm, repetition, needless sign-offs and invented rapport. Never write 'I hope this message finds you well'. Preserve every qualification while changing tone. A checklist not yet prepared must not be described as attached, sent, or ready.
 If source material is insufficient or contains conflicting facts, explain the uncertainty and propose clarification. Never fill gaps to make the result feel complete.`;
 
@@ -222,6 +222,10 @@ export function validateGrounding(
     }
   }
   for (const action of output.actions) {
+    if (action.kind === "question") {
+      if (!/[?]|\b(?:asked|whether|what|which|how|should|question|unresolved|undecided|need to know|needs a decision|not agreed)\b/i.test(action.sourceQuote)) throw new ApiError(502, "The proposed question is not supported by an explicit unresolved issue in the source.", "ungrounded_output");
+      action.certainty = "uncertain";
+    }
     action.dueDate = groundedDueDate(
       action.dueDate,
       action.sourceQuote,
@@ -467,3 +471,6 @@ export async function transcribeAudio(file: File) {
     );
   return { text: result.text };
 }
+
+// Reuse the same server-only provider policy for document generation.
+export { client as createAIClient, providerCall as callAIProvider, textModelSettings };

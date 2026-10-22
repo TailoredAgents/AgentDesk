@@ -1,5 +1,7 @@
+import type { WorkProduct, TaskCalendarSchedule } from "./work-product-types";
+
 export type ActionKind =
-  "summary" | "crm_note" | "message" | "task" | "listing_update";
+  "summary" | "crm_note" | "message" | "task" | "listing_update" | "question";
 export type Decision = "pending" | "approved" | "rejected";
 export type Fact = {
   text: string;
@@ -75,6 +77,7 @@ export type Task = {
   createdAt: string;
   reviewPackageId?: string | null;
   sourceActionId?: string | null;
+  calendarSchedule?: TaskCalendarSchedule | null;
 };
 export type Conversation = {
   id: string;
@@ -140,6 +143,7 @@ export type Commitment = {
   sourceQuote: string;
   createdAt: string;
   resolvedAt: string | null;
+  sourceActionId?: string | null;
 };
 export type ReviewAudit = {
   id: string;
@@ -191,6 +195,7 @@ export type WorkspaceData = {
   commitments: Commitment[];
   recommendations: FollowUpRecommendation[];
   reviewHistory: ReviewAudit[];
+  workProducts: WorkProduct[];
   capabilities: {
     ai: boolean;
     transcription: boolean;

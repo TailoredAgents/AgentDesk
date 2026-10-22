@@ -25,6 +25,8 @@ import {
 } from "../ui";
 import type { View } from "./types";
 import { Progress, TaskRow } from "./shared";
+import { WorkProducts } from "./work-products";
+import { AppointmentCalendar } from "./calendar-actions";
 
 export function Today({
   data,
@@ -39,6 +41,8 @@ export function Today({
   onFollowUp,
   onRefresh,
   refreshing,
+  onUpdate,
+  notify,
 }: {
   data: WorkspaceData;
   agent: Agent;
@@ -52,6 +56,8 @@ export function Today({
   onFollowUp: (id: string) => void;
   onRefresh: () => void;
   refreshing: boolean;
+  onUpdate: (data: WorkspaceData) => void;
+  notify: (message: string) => void;
 }) {
   const [taskFilter, setTaskFilter] = useState("open");
   const [appointmentId, setAppointmentId] = useState<string | null>(null);
@@ -179,6 +185,14 @@ export function Today({
       </section>
       <div className="today-grid">
         <div className="today-primary">
+          <WorkProducts
+            data={data}
+            filter={{ agentId: agent.id }}
+            pendingOnly
+            onUpdate={onUpdate}
+            notify={notify}
+            title="Documents awaiting your review"
+          />
           <section className="priorities-section">
             <SectionTitle
               title="Relationships that need a little attention"
@@ -285,6 +299,8 @@ export function Today({
                     data={data}
                     onToggle={() => onTask(t)}
                     onProperty={onProperty}
+                    onUpdate={onUpdate}
+                    notify={notify}
                   />
                 ))}
               {!tasks.filter((t) => t.status === taskFilter).length && (
@@ -482,6 +498,21 @@ export function Today({
                 connected.
               </p>
             </div>
+            <AppointmentCalendar appointment={selectedAppointment} />
+            <WorkProducts
+              data={data}
+              onUpdate={onUpdate}
+              notify={notify}
+              filter={{ appointmentId: selectedAppointment.id }}
+              context={{
+                kind: "appointment_briefing",
+                agentId: selectedAppointment.agentId,
+                clientId: selectedAppointment.clientId,
+                propertyId: selectedAppointment.propertyId,
+                appointmentId: selectedAppointment.id,
+              }}
+              title="Prepared appointment briefings"
+            />
           </div>
         </Modal>
       )}

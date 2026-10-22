@@ -8,6 +8,13 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { Agent, Fact, ReviewAudit } from "../types";
+import type {
+  WorkProductContent,
+  WorkProductSnapshot,
+  WorkProductKind,
+  WorkProductVersion,
+  TaskCalendarSchedule,
+} from "../work-product-types";
 
 const id = () => text("id").primaryKey();
 const workspaceId = () => text("workspace_id").notNull();
@@ -104,7 +111,14 @@ export const proposedActions = pgTable("proposed_actions", {
   packageId: text("package_id").notNull(),
   position: integer("position").notNull(),
   kind: text("kind")
-    .$type<"summary" | "crm_note" | "message" | "task" | "listing_update">()
+    .$type<
+      | "summary"
+      | "crm_note"
+      | "message"
+      | "task"
+      | "listing_update"
+      | "question"
+    >()
     .notNull(),
   title: text("title").notNull(),
   body: text("body").notNull(),
@@ -137,6 +151,7 @@ export const tasks = pgTable(
     source: text("source").notNull(),
     sourceActionId: text("source_action_id"),
     reviewPackageId: text("review_package_id"),
+    calendarSchedule: jsonb("calendar_schedule").$type<TaskCalendarSchedule>(),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("tasks_source_action_unique").on(t.sourceActionId)],
@@ -197,6 +212,61 @@ export const commitments = pgTable("commitments", {
   sourceQuote: text("source_quote").notNull(),
   createdAt: createdAt(),
   resolvedAt: timestamp("resolved_at", { withTimezone: true, mode: "string" }),
+  sourceActionId: text("source_action_id").unique(),
+});
+
+export const workProducts = pgTable("work_products", {
+  id: id(),
+  workspaceId: workspaceId(),
+  kind: text("kind").$type<WorkProductKind>().notNull(),
+  agentId: text("agent_id").notNull(),
+  clientId: text("client_id"),
+  propertyId: text("property_id"),
+  appointmentId: text("appointment_id"),
+  sourceConversationId: text("source_conversation_id"),
+  sourcePackageId: text("source_package_id"),
+  createdAt: createdAt(),
+});
+export const workProductVersions = pgTable("work_product_versions", {
+  id: id(),
+  workspaceId: workspaceId(),
+  productId: text("product_id").notNull(),
+  version: integer("version").notNull(),
+  editRevision: integer("edit_revision").notNull().default(0),
+  status: text("status")
+    .$type<"pending" | "approved" | "rejected">()
+    .notNull()
+    .default("pending"),
+  origin: text("origin").$type<"sample" | "openai">().notNull(),
+  content: jsonb("content").$type<WorkProductContent>().notNull(),
+  originalContent: jsonb("original_content")
+    .$type<WorkProductContent>()
+    .notNull(),
+  snapshot: jsonb("snapshot").$type<WorkProductSnapshot>().notNull(),
+  requestId: text("request_id").notNull(),
+  requestFingerprint: text("request_fingerprint").notNull(),
+  requestMetadata: jsonb("request_metadata")
+    .$type<Record<string, string | null>>()
+    .notNull(),
+  createdAt: createdAt(),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true, mode: "string" }),
+  reviewer: text("reviewer"),
+  reviewInputRevision: integer("review_input_revision"),
+  pdfBase64: text("pdf_base64"),
+  pdfSha256: text("pdf_sha256"),
+});
+export const workProductAudits = pgTable("work_product_audits", {
+  id: id(),
+  workspaceId: workspaceId(),
+  productId: text("product_id").notNull(),
+  versionId: text("version_id").notNull(),
+  event: text("event")
+    .$type<WorkProductVersion["history"][number]["event"]>()
+    .notNull(),
+  editRevision: integer("edit_revision").notNull(),
+  content: jsonb("content").$type<WorkProductContent>().notNull(),
+  actor: text("actor").notNull(),
+  createdAt: createdAt(),
 });
 export const reviewAudits = pgTable("review_audits", {
   id: id(),

@@ -14,6 +14,7 @@ import {
 import { Progress, TaskRow } from "./shared";
 import { CommitmentList } from "./commitments";
 import { listingMilestones, orderedTasks } from "@/lib/workspace-insights";
+import { WorkProducts } from "./work-products";
 
 export function PropertyDetail({
   property: p,
@@ -23,6 +24,8 @@ export function PropertyDetail({
   onReview,
   onClient,
   onCommitment,
+  onUpdate,
+  notify,
 }: {
   property: Property;
   data: WorkspaceData;
@@ -31,6 +34,8 @@ export function PropertyDetail({
   onReview: (id: string) => void;
   onClient: (id: string) => void;
   onCommitment: (item: Commitment) => void;
+  onUpdate: (data: WorkspaceData) => void;
+  notify: (message: string) => void;
 }) {
   if (!p) return null;
   const tasks = orderedTasks(
@@ -88,6 +93,19 @@ export function PropertyDetail({
             </div>
           ))}
         </div>
+        <WorkProducts
+          data={data}
+          onUpdate={onUpdate}
+          notify={notify}
+          filter={{ propertyId: p.id }}
+          context={{
+            kind: "seller_preparation",
+            agentId: p.agentId,
+            clientId: p.clientId,
+            propertyId: p.id,
+          }}
+          title="Prepared for this listing"
+        />
         {commitments.length > 0 && (
           <>
             <SectionTitle title="Dependencies & commitments" />
@@ -114,6 +132,8 @@ export function PropertyDetail({
               task={t}
               data={data}
               onToggle={() => onTask(t)}
+              onUpdate={onUpdate}
+              notify={notify}
             />
           ))}
         </div>
