@@ -2151,3 +2151,64 @@ mark {
     font-size: 12px;
   }
 }
+
+/* Today: separate work areas with surfaces, not just row dividers. */
+.today-grid {
+  gap: 24px;
+  align-items: start;
+}
+.today-grid > .today-primary,
+.today-grid > .today-secondary {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.today-primary > .work-products-section,
+.today-primary > .priorities-section,
+.today-primary > .listing-preview,
+.today-secondary > .schedule-panel {
+  margin: 0;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 2px 5px #20304705;
+}
+.today-primary > section > .section-heading,
+.today-secondary > .schedule-panel > .section-heading {
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.today-primary > .secondary-priorities {
+  padding: 16px 22px;
+  background: #f2f5f8;
+  box-shadow: none;
+}
+.today-primary > .secondary-priorities > summary {
+  padding: 0;
+}
+.today-primary .task-row:last-child,
+.today-primary .work-product-row:last-of-type {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.today-secondary > .workforce-card {
+  margin: 0;
+}
+@media (max-width: 600px) {
+  .today-grid,
+  .today-grid > .today-primary,
+  .today-grid > .today-secondary {
+    gap: 16px;
+  }
+  .today-primary > .work-products-section,
+  .today-primary > .priorities-section,
+  .today-primary > .listing-preview,
+  .today-secondary > .schedule-panel {
+    padding: 16px;
+  }
+  .today-primary > .secondary-priorities {
+    padding-block: 14px;
+  }
+}
