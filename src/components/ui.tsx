@@ -1,5 +1,12 @@
 "use client";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { CopilotAccess } from "./copilot-access";
 import { createPortal } from "react-dom";
 import {
   ArrowUpRight,
@@ -12,6 +19,7 @@ import {
   ChartNoAxesCombined,
   Search,
   Inbox,
+  Sparkles,
 } from "lucide-react";
 import type { Agent } from "@/lib/types";
 export const workforce = [
@@ -155,6 +163,7 @@ export function Modal({
   className?: string;
 }) {
   const panel = useRef<HTMLDivElement>(null);
+  const copilot = useContext(CopilotAccess);
   const [target, setTarget] = useState<HTMLElement | null>(null);
   useEffect(() => {
     setTarget(document.body);
@@ -175,6 +184,8 @@ export function Modal({
     )?.focus();
     if (!element.contains(document.activeElement)) element.focus();
     function key(e: KeyboardEvent) {
+      if ((document.activeElement as HTMLElement)?.closest(".copilot-panel"))
+        return;
       if (activeModals.at(-1) !== element) return;
       if (e.key === "Escape") closeRef.current();
       if (e.key === "Tab") {
@@ -219,7 +230,7 @@ export function Modal({
     >
       <div
         role="dialog"
-        aria-modal="true"
+        aria-modal={!copilot.open}
         aria-label={title}
         tabIndex={-1}
         ref={panel}
@@ -230,6 +241,17 @@ export function Modal({
             <h2>{title}</h2>
             {subtitle && <p>{subtitle}</p>}
           </div>
+          {copilot.enabled && (
+            <button
+              className="copilot-launch modal-copilot-launch"
+              aria-label="Ask AgentDesk"
+              title="Ask AgentDesk"
+              onClick={copilot.show}
+            >
+              <Sparkles size={14} />
+              <span>Ask AgentDesk</span>
+            </button>
+          )}
           <button
             className="icon-button"
             aria-label="Close dialog"

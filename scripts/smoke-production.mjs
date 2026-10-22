@@ -31,6 +31,8 @@ const env = {
   SESSION_SECRET: "production-smoke-secret-at-least-thirty-two-characters",
   APP_URL: "https://agentdesk-smoke.example",
   OPENAI_API_KEY: "",
+  AGENTDESK_COPILOT_ENABLED:
+    process.env.SMOKE_COPILOT === "1" ? "true" : "false",
   NEXT_TELEMETRY_DISABLED: "1",
   CRM_PILOT_ENABLED: "1",
   PILOT_AUTH_SECRET: "production-test-individual-auth-secret-32-characters",
@@ -139,6 +141,116 @@ try {
     "content-type": "application/json",
     origin: env.APP_URL,
   };
+  assert.equal((await request("/api/copilot?agentId=jordan")).status, 401);
+  const copilot = await request("/api/copilot?agentId=jordan", {
+    headers: sessionHeaders,
+  });
+  if (env.AGENTDESK_COPILOT_ENABLED === "true") {
+    assert.equal(copilot.status, 200);
+    const state = await copilot.json();
+    assert.equal(state.available, false);
+    const chatCookie = copilot.headers.get("set-cookie").split(";")[0];
+    const headers = {
+      ...sessionHeaders,
+      cookie: `${sessionHeaders.cookie}; ${chatCookie}`,
+    };
+    const body = {
+      agentId: "jordan",
+      conversationId: state.conversation.id,
+      requestId: randomUUID(),
+      text: "What's happening with Sarah?",
+      context: {
+        page: "today",
+        clientId: null,
+        propertyId: null,
+        packageId: null,
+        documentId: null,
+      },
+    };
+    assert.equal(
+      (
+        await request("/api/copilot", {
+          method: "POST",
+          headers: { ...headers, origin: "https://untrusted.example" },
+          body: JSON.stringify(body),
+        })
+      ).status,
+      403,
+    );
+    assert.equal(
+      (
+        await request("/api/copilot", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ ...body, workspaceId: "private" }),
+        })
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await request("/api/copilot", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            ...body,
+            context: { ...body.context, clientId: "robert" },
+          }),
+        })
+      ).status,
+      403,
+    );
+    const reply = await request("/api/copilot", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      timeoutMs: 10000,
+    });
+    assert.equal(reply.status, 200);
+    const saved = await reply.json();
+    assert.equal(saved.conversation.turns[0].status, "failed");
+    assert.match(saved.conversation.turns[0].error, /not configured/);
+    assert.equal(saved.conversation.turns[0].calls, undefined);
+    const other = await request("/api/copilot?agentId=jordan", {
+      headers: sessionHeaders,
+    });
+    const otherCookie = other.headers.get("set-cookie").split(";")[0];
+    assert.equal(
+      (
+        await request("/api/copilot", {
+          method: "DELETE",
+          headers: {
+            ...sessionHeaders,
+            cookie: `${sessionHeaders.cookie}; ${otherCookie}`,
+          },
+          body: JSON.stringify({
+            agentId: "jordan",
+            conversationId: state.conversation.id,
+          }),
+        })
+      ).status,
+      404,
+    );
+    assert.equal(
+      (
+        await request("/api/copilot", {
+          method: "DELETE",
+          headers,
+          body: JSON.stringify({
+            agentId: "jordan",
+            conversationId: state.conversation.id,
+          }),
+        })
+      ).status,
+      200,
+    );
+    console.log(
+      "Copilot HTTP: flag enabled, same-origin checks, strict scope, private history, missing provider and deletion passed.",
+    );
+  } else {
+    assert.equal(copilot.status, 404);
+    console.log("Copilot remains disabled in the protected demonstration.");
+  }
   // Even a valid shared-demo session cannot access individually authenticated CRM APIs.
   assert.equal((await request("/pilot")).status, 200);
   assert.deepEqual(await (await request("/api/pilot/readiness")).json(), {

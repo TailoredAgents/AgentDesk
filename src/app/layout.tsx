@@ -7,6 +7,7 @@ import "./globals.css";
 import "./workspace.css";
 import "./crm.css";
 import "./workstyle.css";
+import "./copilot.css";
 export const metadata: Metadata = {
   title: "AgentDesk · Your real estate AI workforce",
   description:

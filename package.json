@@ -12,6 +12,7 @@
     "test": "tsx --test tests/*.test.ts",
     "test:production": "node scripts/smoke-production.mjs",
     "test:ai:live": "tsx scripts/evaluate-ai.ts",
+    "test:copilot:live": "tsx scripts/evaluate-copilot.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
     "pilot:member": "tsx scripts/provision-pilot.ts"

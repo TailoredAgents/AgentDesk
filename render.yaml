@@ -25,6 +25,9 @@ services:
         value: gpt-6.1-sol
       - key: OPENAI_REWRITE_MODEL
         value: gpt-6.1-sol
+      # Release gate: enable only in an isolated preview after live model validation.
+      - key: AGENTDESK_COPILOT_ENABLED
+        value: "false"
       - key: DATABASE_URL
         fromDatabase:
           name: agentdesk-postgres

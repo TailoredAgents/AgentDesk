@@ -18,6 +18,7 @@ import {
   Info,
   AlertCircle,
   Settings2,
+  Sparkles,
 } from "lucide-react";
 import type { WorkspaceData, Task, Commitment } from "@/lib/types";
 import {
@@ -47,6 +48,9 @@ import { WorkspaceNavigation } from "./workspace/navigation-context";
 import type { WorkspaceTarget } from "./workspace/workflow-navigation";
 import { RecordTarget } from "./workspace/record-target";
 import { Connections } from "./crm/connections";
+import { CopilotAccess } from "./copilot-access";
+import { CopilotPanel } from "./copilot-panel";
+import type { PageContext, Target } from "@/lib/copilot/types";
 
 const viewNames: Record<View, string> = {
   today: "Today",
@@ -70,7 +74,12 @@ function previewAgent(data: WorkspaceData, id: string | null) {
   );
 }
 
-export default function AgentDesk() {
+export default function AgentDesk({
+  copilotEnabled = false,
+}: {
+  copilotEnabled?: boolean;
+}) {
+  const [copilotOpen, setCopilotOpen] = useState(false);
   const [data, setData] = useState<WorkspaceData | null>(null),
     [error, setError] = useState(""),
     [view, setView] = useState<View>("today"),
@@ -325,517 +334,600 @@ export default function AgentDesk() {
       review(next.id);
     } else setTarget(next);
   };
+  const copilotDocument =
+    target?.kind === "document"
+      ? data.workProducts.find((p) => p.id === target.id)
+      : null;
+  const copilotContext: PageContext = {
+    page: view,
+    clientId:
+      client ||
+      (property
+        ? data.properties.find((p) => p.id === property)?.clientId
+        : null) ||
+      copilotDocument?.clientId ||
+      null,
+    propertyId: property || copilotDocument?.propertyId || null,
+    packageId:
+      view === "review" && !client && !property && !target
+        ? selectedPackage
+        : null,
+    documentId: target?.kind === "document" ? target.id : null,
+  };
+  const contextLabel =
+    target?.kind === "document"
+      ? data.workProducts.find((p) => p.id === target.id)?.versions[0]?.content
+          .title
+      : client
+        ? data.clients.find((c) => c.id === client)?.name
+        : property
+          ? data.properties.find((p) => p.id === property)?.address
+          : view === "review" && selectedPackage
+            ? data.packages.find((p) => p.id === selectedPackage)?.title
+            : viewNames[view];
+  const copilotAgent =
+    data.agents.find(
+      (a) =>
+        a.id ===
+        (data.clients.find((c) => c.id === client)?.agentId ||
+          data.properties.find((p) => p.id === property)?.agentId ||
+          (target?.kind === "document"
+            ? data.workProducts.find((p) => p.id === target.id)?.agentId
+            : null)),
+    ) || agent;
+  const openCopilotRecord = (next: Target) => {
+    if (window.matchMedia("(max-width: 1100px)").matches) setCopilotOpen(false);
+    if (next.kind === "client") {
+      setProperty(null);
+      setTarget(null);
+      setClient(next.id);
+    } else if (next.kind === "property") {
+      setClient(null);
+      setTarget(null);
+      setProperty(next.id);
+    } else openTarget(next as WorkspaceTarget);
+  };
   return (
-    <WorkspaceNavigation.Provider
-      value={{ openTarget, openFollowUps: setFollowUpAgentId }}
+    <CopilotAccess.Provider
+      value={{
+        enabled: copilotEnabled,
+        open: copilotOpen,
+        show: () => setCopilotOpen(true),
+      }}
     >
-      <div className="app-shell">
-        {mobile && (
-          <div className="mobile-scrim" onClick={() => setMobile(false)} />
-        )}
-        <aside className={`sidebar ${mobile ? "open" : ""}`}>
-          <button
-            className="icon-button mobile-sidebar-close"
-            aria-label="Close navigation"
-            onClick={() => setMobile(false)}
-          >
-            <X size={18} />
-          </button>
-          <a
-            href="/"
-            className="brand"
-            onClick={(e) => {
-              e.preventDefault();
-              navigate("today");
-            }}
-          >
-            <span className="brand-mark">
-              a<span>↗</span>
-            </span>
-            <span>
-              AgentDesk<span className="brand-dot">.</span>
-            </span>
-          </a>
-          <button
-            className="workspace-switch"
-            onClick={() => setPanel("settings")}
-          >
-            <span className="workspace-monogram">W</span>
-            <span>
-              <strong>{data.workspace.name}</strong>
-              <small>Sample workspace</small>
-            </span>
-            <ChevronDown size={14} />
-          </button>
-          <div className="nav-caption">WORKSPACE</div>
-          <nav aria-label="Main navigation">
-            {(
-              [
-                ["today", Sun],
-                ["review", Inbox],
-                ["listings", House],
-                ["team", Users],
-              ] as const
-            ).map(([key, Icon]) => (
-              <button
-                key={key}
-                className={`nav-item ${view === key ? "active" : ""}`}
-                aria-current={view === key ? "page" : undefined}
-                onClick={() => navigate(key)}
-              >
-                <Icon size={19} strokeWidth={1.7} />
-                <span>{viewNames[key]}</span>
-                {key === "review" && pending.length > 0 && (
-                  <span className="nav-count">{pending.length}</span>
-                )}
-              </button>
-            ))}
-          </nav>
-          <div className="nav-caption workforce-caption">
-            YOUR AI WORKFORCE <span className="status-dot" />
-          </div>
-          <div className="workforce-nav">
-            {workforce.map((a, i) => (
-              <button
-                key={a.name}
-                onClick={() => {
-                  setWorkforceRole(i);
-                  setPanel("workforce");
-                }}
-              >
-                <AssistantIcon index={i} small />
-                <span>{a.name}</span>
-              </button>
-            ))}
-          </div>
-          <div className="sidebar-bottom">
-            <div className="sidebar-note">
-              <span className="tiny-eyebrow">A LITTLE LESS BUSYWORK.</span>
-              <p>
-                More room for
-                <br />
-                the human side.
-              </p>
-              <span className="note-line" />
-            </div>
+      <WorkspaceNavigation.Provider
+        value={{ openTarget, openFollowUps: setFollowUpAgentId }}
+      >
+        <div className={`app-shell ${copilotOpen ? "copilot-open" : ""}`}>
+          {mobile && (
+            <div className="mobile-scrim" onClick={() => setMobile(false)} />
+          )}
+          <aside className={`sidebar ${mobile ? "open" : ""}`}>
             <button
-              className="nav-item mobile-activity"
-              onClick={() => setPanel("activity")}
+              className="icon-button mobile-sidebar-close"
+              aria-label="Close navigation"
+              onClick={() => setMobile(false)}
             >
-              <Activity size={18} />
-              Activity history
+              <X size={18} />
             </button>
-            <button
-              className="nav-item"
-              onClick={() => setPanel("integrations")}
+            <a
+              href="/"
+              className="brand"
+              onClick={(e) => {
+                e.preventDefault();
+                navigate("today");
+              }}
             >
-              <Link2 size={18} />
-              Connections
-              <span className="small-dot" />
-            </button>
-            <button className="nav-item" onClick={() => setPanel("settings")}>
-              <Settings2 size={18} />
-              Workspace settings
-            </button>
+              <span className="brand-mark">
+                a<span>↗</span>
+              </span>
+              <span>
+                AgentDesk<span className="brand-dot">.</span>
+              </span>
+            </a>
             <button
-              className="profile-button"
+              className="workspace-switch"
               onClick={() => setPanel("settings")}
             >
-              <Avatar agent={agent} />
+              <span className="workspace-monogram">W</span>
               <span>
-                <strong>{agent.name}</strong>
-                <small>
-                  {leader ? "Team leader preview" : "Real estate advisor"}
-                </small>
+                <strong>{data.workspace.name}</strong>
+                <small>Sample workspace</small>
               </span>
-              <ChevronDown size={15} />
+              <ChevronDown size={14} />
             </button>
-            <span className="tailored-brand">
-              CRAFTED BY <b>TAILORED AGENTS</b>
-            </span>
-          </div>
-        </aside>
-        <div className="main-shell">
-          <header className="topbar">
-            <div className="breadcrumb">
-              <button
-                className="icon-button mobile-menu"
-                aria-label="Open navigation"
-                aria-expanded={mobile}
-                onClick={() => setMobile(true)}
-              >
-                <Menu size={20} />
-              </button>
-              <span className="desktop-breadcrumb">Workspace</span>
-              <ChevronRight size={13} className="desktop-breadcrumb" />
-              <strong>{viewNames[view]}</strong>
+            <div className="nav-caption">WORKSPACE</div>
+            <nav aria-label="Main navigation">
+              {(
+                [
+                  ["today", Sun],
+                  ["review", Inbox],
+                  ["listings", House],
+                  ["team", Users],
+                ] as const
+              ).map(([key, Icon]) => (
+                <button
+                  key={key}
+                  className={`nav-item ${view === key ? "active" : ""}`}
+                  aria-current={view === key ? "page" : undefined}
+                  onClick={() => navigate(key)}
+                >
+                  <Icon size={19} strokeWidth={1.7} />
+                  <span>{viewNames[key]}</span>
+                  {key === "review" && pending.length > 0 && (
+                    <span className="nav-count">{pending.length}</span>
+                  )}
+                </button>
+              ))}
+            </nav>
+            <div className="nav-caption workforce-caption">
+              YOUR AI WORKFORCE <span className="status-dot" />
             </div>
-            <div className="topbar-actions">
-              <span className="sample-label">
-                <span />
-                Sample workspace
-              </span>
+            <div className="workforce-nav">
+              {workforce.map((a, i) => (
+                <button
+                  key={a.name}
+                  onClick={() => {
+                    setWorkforceRole(i);
+                    setPanel("workforce");
+                  }}
+                >
+                  <AssistantIcon index={i} small />
+                  <span>{a.name}</span>
+                </button>
+              ))}
+            </div>
+            <div className="sidebar-bottom">
+              <div className="sidebar-note">
+                <span className="tiny-eyebrow">A LITTLE LESS BUSYWORK.</span>
+                <p>
+                  More room for
+                  <br />
+                  the human side.
+                </p>
+                <span className="note-line" />
+              </div>
               <button
-                className="search-trigger"
-                aria-label="Search workspace"
-                onClick={() => setPanel("search")}
-              >
-                <Search size={16} />
-                <span>Search anything</span>
-                <kbd>{searchShortcut}</kbd>
-              </button>
-              <button
-                className="icon-button activity-trigger"
-                title="Activity history"
-                aria-label="Activity history"
+                className="nav-item mobile-activity"
                 onClick={() => setPanel("activity")}
               >
-                <Activity size={19} />
+                <Activity size={18} />
+                Activity history
               </button>
-              <Avatar agent={agent} small />
-            </div>
-          </header>
-          <main className={`main-content view-${view}`}>
-            {view === "today" && (
-              <Today
-                key={agent.id}
-                data={data}
-                agent={agent}
-                onReview={review}
-                onCapture={() => setPanel("capture")}
-                onProperty={setProperty}
-                onClient={setClient}
-                onTask={toggleTask}
-                onView={navigate}
-                onWorkforce={() => {
-                  setWorkforceRole(null);
-                  setPanel("workforce");
-                }}
-                onFollowUp={setFollowUpId}
-                onRefresh={() => prepareFollowUps()}
-                refreshing={preparing}
-                onUpdate={applyData}
-                notify={notify}
-              />
-            )}
-            {view === "review" && (
-              <Review
-                key={agent.id}
-                data={data}
-                agent={agent}
-                selected={selectedPackage}
-                setSelected={selectPackage}
-                onCapture={() => setPanel("capture")}
-                onUpdate={applyData}
-                notify={notify}
-                onProperty={setProperty}
-                onClient={setClient}
-              />
-            )}
-            {view === "listings" && (
-              <Listings data={data} onProperty={setProperty} />
-            )}
-            {view === "team" && (
-              <Team
-                data={data}
-                onProperty={setProperty}
-                onReview={review}
-                onClient={setClient}
-                onSettings={() => setPanel("settings")}
-              />
-            )}
-            <footer className="page-footer">
-              <span>Thoughtfully prepared. Always in your hands.</span>
-              <span>
-                <ShieldCheck size={13} /> Your approval comes first
+              <button
+                className="nav-item"
+                onClick={() => setPanel("integrations")}
+              >
+                <Link2 size={18} />
+                Connections
+                <span className="small-dot" />
+              </button>
+              <button className="nav-item" onClick={() => setPanel("settings")}>
+                <Settings2 size={18} />
+                Workspace settings
+              </button>
+              <button
+                className="profile-button"
+                onClick={() => setPanel("settings")}
+              >
+                <Avatar agent={agent} />
+                <span>
+                  <strong>{agent.name}</strong>
+                  <small>
+                    {leader ? "Team leader preview" : "Real estate advisor"}
+                  </small>
+                </span>
+                <ChevronDown size={15} />
+              </button>
+              <span className="tailored-brand">
+                CRAFTED BY <b>TAILORED AGENTS</b>
               </span>
-            </footer>
-          </main>
-        </div>
-        {toast && (
-          <div
-            role={toast.tone === "error" ? "alert" : "status"}
-            className={`toast ${toast.tone}`}
-          >
-            {toast.tone === "error" ? (
-              <AlertCircle size={18} />
-            ) : (
-              <Info size={18} />
-            )}
-            <span>{toast.message}</span>
-            <button
-              aria-label="Dismiss notification"
-              onClick={() => setToast(null)}
-            >
-              <X size={15} />
-            </button>
-          </div>
-        )}
-        {panel === "capture" && (
-          <Capture
-            key={draftKey}
-            draft={captureDrafts.current[draftKey]}
-            onDraft={keepCaptureDraft}
-            data={data}
-            agent={agent}
-            onClose={close}
-            onComplete={async (id, updated) => {
-              const saved =
-                updated || (await request<WorkspaceData>("/api/workspace"));
-              applyData(saved);
-              const owner = saved.packages.find(
-                (pkg) => pkg.id === id,
-              )?.agentId;
-              if (owner) selectAgent(owner);
-              close();
-              review(id);
-            }}
-          />
-        )}
-        {panel === "workforce" && (
-          <Modal
-            title="Five specialists. One shared context."
-            subtitle="A coordinated workforce, with you at the center."
-            initialFocus={
-              workforceRole === null ? undefined : "[data-active-role]"
-            }
-            onClose={close}
-            wide
-          >
-            <div className="workforce-modal">
-              {workforce.map((a, i) => (
-                <div
-                  className={`workforce-role ${workforceRole === i ? "selected" : ""}`}
-                  data-active-role={workforceRole === i ? true : undefined}
-                  tabIndex={-1}
-                  key={a.name}
+            </div>
+          </aside>
+          <div className="main-shell">
+            <header className="topbar">
+              <div className="breadcrumb">
+                <button
+                  className="icon-button mobile-menu"
+                  aria-label="Open navigation"
+                  aria-expanded={mobile}
+                  onClick={() => setMobile(true)}
                 >
-                  <AssistantIcon index={i} />
-                  <div>
-                    <h3>{a.name}</h3>
-                    <p>{a.description}</p>
-                    <button
-                      className="text-link"
-                      onClick={() => {
-                        close();
-                        if (i === 1) setPanel("capture");
-                        else
-                          navigate(
-                            i === 3 ? "listings" : i === 4 ? "team" : "today",
-                          );
-                      }}
-                    >
-                      {
-                        [
-                          "Open Today",
-                          "Add a conversation",
-                          "Open follow-ups on Today",
-                          "Open listings",
-                          "Open Team",
-                        ][i]
-                      }{" "}
-                      <ChevronRight size={14} />
-                    </button>
-                  </div>
-                  <Badge tone={i === 0 || i === 4 ? "neutral" : "blue"}>
-                    {i === 0 || i === 4 ? "Record-based" : "AI-assisted"}
-                  </Badge>
-                </div>
-              ))}
-              <div className="info-strip">
-                <ShieldCheck size={18} />
-                <p>
-                  {data.capabilities.ai
-                    ? "Live AI is configured."
-                    : "Live AI is not configured. Saved sample results are available."}{" "}
-                  Assistants prepare proposals together. Only your approval
-                  applies proposed changes to client and listing records.
-                  Recommendations are evaluated when the workspace refreshes; no
-                  background monitoring is running.
-                </p>
+                  <Menu size={20} />
+                </button>
+                <span className="desktop-breadcrumb">Workspace</span>
+                <ChevronRight size={13} className="desktop-breadcrumb" />
+                <strong>{viewNames[view]}</strong>
               </div>
-            </div>
-          </Modal>
-        )}
-        {panel === "integrations" && <Connections onClose={close} />}
-        {panel === "activity" && (
-          <Modal
-            title="The work, all in one place."
-            subtitle="A persistent history of your workspace."
-            onClose={close}
-          >
-            <div className="modal-activity">
-              <ActivityFeed
-                items={data.activities}
-                onClient={(id) => {
-                  close();
-                  setClient(id);
-                }}
-                onProperty={(id) => {
-                  close();
-                  setProperty(id);
-                }}
-              />
-            </div>
-          </Modal>
-        )}
-        {panel === "search" && (
-          <SearchPanel
-            data={data}
-            onClose={close}
-            onProperty={(id) => {
-              close();
-              setProperty(id);
-            }}
-            onClient={(id) => {
-              close();
-              setClient(id);
-            }}
-            onReview={(id) => {
-              close();
-              review(id);
-            }}
-          />
-        )}
-        {panel === "settings" && (
-          <Settings
-            key={agent.id}
-            data={data}
-            agent={agent}
-            leader={leader}
-            onLeader={setLeader}
-            onAgentChange={(id) => {
-              selectAgent(id);
-              if (view === "review") selectPackage(null);
-              else setSelectedPackage(null);
-            }}
-            onClose={close}
-            onUpdate={applyData}
-            notify={notify}
-            onReset={() => {
-              captureDrafts.current = {};
-              setFollowUpId(null);
-              setFollowUpAgentId(null);
-              setTarget(null);
-              setClient(null);
-              setProperty(null);
-              setSelectedPackage(null);
-              navigate("today");
-            }}
-          />
-        )}
-        {property && (
-          <PropertyDetail
-            property={data.properties.find((p) => p.id === property)!}
-            data={data}
-            onClose={() => setProperty(null)}
-            onTask={toggleTask}
-            onCommitment={toggleCommitment}
-            onUpdate={applyData}
-            notify={notify}
-            onReview={(id) => {
-              setProperty(null);
-              review(id);
-            }}
-            onClient={(id) => {
-              setProperty(null);
-              setClient(id);
-            }}
-          />
-        )}
-        {client && (
-          <ClientDetail
-            client={data.clients.find((c) => c.id === client)!}
-            data={data}
-            onCommitment={toggleCommitment}
-            onUpdate={applyData}
-            notify={notify}
-            onTask={toggleTask}
-            onReview={(id) => {
-              setClient(null);
-              review(id);
-            }}
-            onClose={() => setClient(null)}
-            onProperty={(id) => {
-              setClient(null);
-              setProperty(id);
-            }}
-          />
-        )}
-        {followUpAgentId && (
-          <Modal
-            title={`${data.agents.find((a) => a.id === followUpAgentId)?.name} — follow-ups`}
-            subtitle="Every follow-up behind the Team count"
-            onClose={() => setFollowUpAgentId(null)}
-          >
-            <div className="client-detail">
-              {data.recommendations
-                .filter((r) => r.agentId === followUpAgentId)
-                .map((r) => (
+              <div className="topbar-actions">
+                {copilotEnabled && (
                   <button
-                    className="review-priority"
-                    key={r.id}
-                    onClick={() => setFollowUpId(r.id)}
+                    className="copilot-launch"
+                    aria-expanded={copilotOpen}
+                    onClick={() => setCopilotOpen(!copilotOpen)}
                   >
-                    <span className="priority-body">
-                      <strong>
-                        {data.clients.find((c) => c.id === r.clientId)?.name}
-                      </strong>
-                      <span>{r.title}</span>
-                      <small>{r.reason}</small>
-                    </span>
-                    <ChevronRight size={18} />
+                    <Sparkles size={15} />
+                    Ask AgentDesk
                   </button>
-                ))}
-              {!data.recommendations.some(
-                (r) => r.agentId === followUpAgentId,
-              ) && <p>No follow-ups currently need attention.</p>}
+                )}
+                <span className="sample-label">
+                  <span />
+                  Sample workspace
+                </span>
+                <button
+                  className="search-trigger"
+                  aria-label="Search workspace"
+                  onClick={() => setPanel("search")}
+                >
+                  <Search size={16} />
+                  <span>Search anything</span>
+                  <kbd>{searchShortcut}</kbd>
+                </button>
+                <button
+                  className="icon-button activity-trigger"
+                  title="Activity history"
+                  aria-label="Activity history"
+                  onClick={() => setPanel("activity")}
+                >
+                  <Activity size={19} />
+                </button>
+                <Avatar agent={agent} small />
+              </div>
+            </header>
+            <main className={`main-content view-${view}`}>
+              {view === "today" && (
+                <Today
+                  key={agent.id}
+                  data={data}
+                  agent={agent}
+                  onReview={review}
+                  onCapture={() => setPanel("capture")}
+                  onProperty={setProperty}
+                  onClient={setClient}
+                  onTask={toggleTask}
+                  onView={navigate}
+                  onWorkforce={() => {
+                    setWorkforceRole(null);
+                    setPanel("workforce");
+                  }}
+                  onFollowUp={setFollowUpId}
+                  onRefresh={() => prepareFollowUps()}
+                  refreshing={preparing}
+                  onUpdate={applyData}
+                  notify={notify}
+                />
+              )}
+              {view === "review" && (
+                <Review
+                  key={agent.id}
+                  data={data}
+                  agent={agent}
+                  selected={selectedPackage}
+                  setSelected={selectPackage}
+                  onCapture={() => setPanel("capture")}
+                  onUpdate={applyData}
+                  notify={notify}
+                  onProperty={setProperty}
+                  onClient={setClient}
+                />
+              )}
+              {view === "listings" && (
+                <Listings data={data} onProperty={setProperty} />
+              )}
+              {view === "team" && (
+                <Team
+                  data={data}
+                  onProperty={setProperty}
+                  onReview={review}
+                  onClient={setClient}
+                  onSettings={() => setPanel("settings")}
+                />
+              )}
+              <footer className="page-footer">
+                <span>Thoughtfully prepared. Always in your hands.</span>
+                <span>
+                  <ShieldCheck size={13} /> Your approval comes first
+                </span>
+              </footer>
+            </main>
+          </div>
+          {toast && (
+            <div
+              role={toast.tone === "error" ? "alert" : "status"}
+              className={`toast ${toast.tone}`}
+            >
+              {toast.tone === "error" ? (
+                <AlertCircle size={18} />
+              ) : (
+                <Info size={18} />
+              )}
+              <span>{toast.message}</span>
+              <button
+                aria-label="Dismiss notification"
+                onClick={() => setToast(null)}
+              >
+                <X size={15} />
+              </button>
             </div>
-          </Modal>
-        )}
-        {followUp && (
-          <FollowUp
-            item={followUp}
-            data={data}
-            notify={notify}
-            onTask={toggleTask}
-            onCommitment={toggleCommitment}
-            busy={preparing}
-            onClose={() => setFollowUpId(null)}
-            onReview={(id) => {
-              setFollowUpId(null);
-              setFollowUpAgentId(null);
-              review(id);
-            }}
-            onPrepare={() => prepareFollowUps(followUp.id)}
-            onClient={(id) => {
-              setFollowUpId(null);
-              setClient(id);
-            }}
-            onProperty={(id) => {
-              setFollowUpId(null);
-              setProperty(id);
-            }}
+          )}
+          {panel === "capture" && (
+            <Capture
+              key={draftKey}
+              draft={captureDrafts.current[draftKey]}
+              onDraft={keepCaptureDraft}
+              data={data}
+              agent={agent}
+              onClose={close}
+              onComplete={async (id, updated) => {
+                const saved =
+                  updated || (await request<WorkspaceData>("/api/workspace"));
+                applyData(saved);
+                const owner = saved.packages.find(
+                  (pkg) => pkg.id === id,
+                )?.agentId;
+                if (owner) selectAgent(owner);
+                close();
+                review(id);
+              }}
+            />
+          )}
+          {panel === "workforce" && (
+            <Modal
+              title="Five specialists. One shared context."
+              subtitle="A coordinated workforce, with you at the center."
+              initialFocus={
+                workforceRole === null ? undefined : "[data-active-role]"
+              }
+              onClose={close}
+              wide
+            >
+              <div className="workforce-modal">
+                {workforce.map((a, i) => (
+                  <div
+                    className={`workforce-role ${workforceRole === i ? "selected" : ""}`}
+                    data-active-role={workforceRole === i ? true : undefined}
+                    tabIndex={-1}
+                    key={a.name}
+                  >
+                    <AssistantIcon index={i} />
+                    <div>
+                      <h3>{a.name}</h3>
+                      <p>{a.description}</p>
+                      <button
+                        className="text-link"
+                        onClick={() => {
+                          close();
+                          if (i === 1) setPanel("capture");
+                          else
+                            navigate(
+                              i === 3 ? "listings" : i === 4 ? "team" : "today",
+                            );
+                        }}
+                      >
+                        {
+                          [
+                            "Open Today",
+                            "Add a conversation",
+                            "Open follow-ups on Today",
+                            "Open listings",
+                            "Open Team",
+                          ][i]
+                        }{" "}
+                        <ChevronRight size={14} />
+                      </button>
+                    </div>
+                    <Badge tone={i === 0 || i === 4 ? "neutral" : "blue"}>
+                      {i === 0 || i === 4 ? "Record-based" : "AI-assisted"}
+                    </Badge>
+                  </div>
+                ))}
+                <div className="info-strip">
+                  <ShieldCheck size={18} />
+                  <p>
+                    {data.capabilities.ai
+                      ? "Live AI is configured."
+                      : "Live AI is not configured. Saved sample results are available."}{" "}
+                    Assistants prepare proposals together. Only your approval
+                    applies proposed changes to client and listing records.
+                    Recommendations are evaluated when the workspace refreshes;
+                    no background monitoring is running.
+                  </p>
+                </div>
+              </div>
+            </Modal>
+          )}
+          {panel === "integrations" && <Connections onClose={close} />}
+          {panel === "activity" && (
+            <Modal
+              title="The work, all in one place."
+              subtitle="A persistent history of your workspace."
+              onClose={close}
+            >
+              <div className="modal-activity">
+                <ActivityFeed
+                  items={data.activities}
+                  onClient={(id) => {
+                    close();
+                    setClient(id);
+                  }}
+                  onProperty={(id) => {
+                    close();
+                    setProperty(id);
+                  }}
+                />
+              </div>
+            </Modal>
+          )}
+          {panel === "search" && (
+            <SearchPanel
+              data={data}
+              onClose={close}
+              onProperty={(id) => {
+                close();
+                setProperty(id);
+              }}
+              onClient={(id) => {
+                close();
+                setClient(id);
+              }}
+              onReview={(id) => {
+                close();
+                review(id);
+              }}
+            />
+          )}
+          {panel === "settings" && (
+            <Settings
+              key={agent.id}
+              data={data}
+              agent={agent}
+              leader={leader}
+              onLeader={setLeader}
+              onAgentChange={(id) => {
+                selectAgent(id);
+                if (view === "review") selectPackage(null);
+                else setSelectedPackage(null);
+              }}
+              onClose={close}
+              onUpdate={applyData}
+              notify={notify}
+              onReset={() => {
+                captureDrafts.current = {};
+                setFollowUpId(null);
+                setFollowUpAgentId(null);
+                setTarget(null);
+                setClient(null);
+                setProperty(null);
+                setSelectedPackage(null);
+                navigate("today");
+              }}
+            />
+          )}
+          {property && (
+            <PropertyDetail
+              property={data.properties.find((p) => p.id === property)!}
+              data={data}
+              onClose={() => setProperty(null)}
+              onTask={toggleTask}
+              onCommitment={toggleCommitment}
+              onUpdate={applyData}
+              notify={notify}
+              onReview={(id) => {
+                setProperty(null);
+                review(id);
+              }}
+              onClient={(id) => {
+                setProperty(null);
+                setClient(id);
+              }}
+            />
+          )}
+          {client && (
+            <ClientDetail
+              client={data.clients.find((c) => c.id === client)!}
+              data={data}
+              onCommitment={toggleCommitment}
+              onUpdate={applyData}
+              notify={notify}
+              onTask={toggleTask}
+              onReview={(id) => {
+                setClient(null);
+                review(id);
+              }}
+              onClose={() => setClient(null)}
+              onProperty={(id) => {
+                setClient(null);
+                setProperty(id);
+              }}
+            />
+          )}
+          {followUpAgentId && (
+            <Modal
+              title={`${data.agents.find((a) => a.id === followUpAgentId)?.name} — follow-ups`}
+              subtitle="Every follow-up behind the Team count"
+              onClose={() => setFollowUpAgentId(null)}
+            >
+              <div className="client-detail">
+                {data.recommendations
+                  .filter((r) => r.agentId === followUpAgentId)
+                  .map((r) => (
+                    <button
+                      className="review-priority"
+                      key={r.id}
+                      onClick={() => setFollowUpId(r.id)}
+                    >
+                      <span className="priority-body">
+                        <strong>
+                          {data.clients.find((c) => c.id === r.clientId)?.name}
+                        </strong>
+                        <span>{r.title}</span>
+                        <small>{r.reason}</small>
+                      </span>
+                      <ChevronRight size={18} />
+                    </button>
+                  ))}
+                {!data.recommendations.some(
+                  (r) => r.agentId === followUpAgentId,
+                ) && <p>No follow-ups currently need attention.</p>}
+              </div>
+            </Modal>
+          )}
+          {followUp && (
+            <FollowUp
+              item={followUp}
+              data={data}
+              notify={notify}
+              onTask={toggleTask}
+              onCommitment={toggleCommitment}
+              busy={preparing}
+              onClose={() => setFollowUpId(null)}
+              onReview={(id) => {
+                setFollowUpId(null);
+                setFollowUpAgentId(null);
+                review(id);
+              }}
+              onPrepare={() => prepareFollowUps(followUp.id)}
+              onClient={(id) => {
+                setFollowUpId(null);
+                setClient(id);
+              }}
+              onProperty={(id) => {
+                setFollowUpId(null);
+                setProperty(id);
+              }}
+            />
+          )}
+          {target && (
+            <RecordTarget
+              key={`${target.kind}:${target.id}`}
+              target={target}
+              data={data}
+              onClose={() => setTarget(null)}
+              onClient={(id) => {
+                setTarget(null);
+                setProperty(null);
+                setClient(id);
+              }}
+              onTask={toggleTask}
+              onCommitment={toggleCommitment}
+              onUpdate={applyData}
+              notify={notify}
+            />
+          )}
+        </div>
+        {copilotEnabled && copilotOpen && (
+          <CopilotPanel
+            key={copilotAgent.id}
+            agentId={copilotAgent.id}
+            agentName={copilotAgent.name}
+            context={copilotContext}
+            contextLabel={contextLabel || viewNames[view]}
+            onClose={() => setCopilotOpen(false)}
+            onOpen={openCopilotRecord}
+            onChanged={refresh}
           />
         )}
-        {target && (
-          <RecordTarget
-            key={`${target.kind}:${target.id}`}
-            target={target}
-            data={data}
-            onClose={() => setTarget(null)}
-            onClient={(id) => {
-              setTarget(null);
-              setProperty(null);
-              setClient(id);
-            }}
-            onTask={toggleTask}
-            onCommitment={toggleCommitment}
-            onUpdate={applyData}
-            notify={notify}
-          />
-        )}
-      </div>
-    </WorkspaceNavigation.Provider>
+      </WorkspaceNavigation.Provider>
+    </CopilotAccess.Provider>
   );
 }

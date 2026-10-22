@@ -3,7 +3,7 @@ name: AgentDesk checks
 on:
   pull_request:
   push:
-    branches: [main, master]
+    branches: [main, master, codex/web-copilot]
 
 permissions:
   contents: read
@@ -54,6 +54,12 @@ jobs:
           node --input-type=module -e "import pg from 'pg'; const pool = new pg.Pool({connectionString: process.env.DATABASE_URL}); try { await pool.query('CREATE DATABASE agentdesk_test_crm'); } finally { await pool.end(); }"
           npx tsx --test tests/crm.test.ts
       - run: npm run build
+      - name: Test Copilot persistence, isolation and recovery against PostgreSQL
+        env:
+          COPILOT_TEST_DATABASE_URL: postgresql://agentdesk:ci-only-local-postgres-password@localhost:5432/agentdesk_test_copilot
+        run: |
+          node --input-type=module -e "import pg from 'pg'; const pool = new pg.Pool({connectionString: process.env.DATABASE_URL}); try { await pool.query('CREATE DATABASE agentdesk_test_copilot'); } finally { await pool.end(); }"
+          npx tsx --test tests/copilot.test.ts
       - name: Test workstyle privacy and decisions against PostgreSQL
         env:
           WORKSTYLE_TEST_DATABASE_URL: postgresql://agentdesk:ci-only-local-postgres-password@localhost:5432/agentdesk_test_workstyle

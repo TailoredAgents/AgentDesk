@@ -5,6 +5,7 @@ import {
 } from "./intelligence-validation";
 import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
+import { aiBudget, assertAIBudget } from "./ai-budget";
 import { z } from "zod";
 import { ApiError } from "./auth";
 import type { Agent, WorkPackage } from "./types";
@@ -82,6 +83,7 @@ function client() {
     apiKey: process.env.OPENAI_API_KEY,
     timeout: 90_000,
     maxRetries: 0,
+    ...(aiBudget.getStore() ? { fetch: (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => fetch(input, { ...init, signal: AbortSignal.any([aiBudget.getStore()!.signal, ...(init?.signal ? [init.signal] : [])]) }) } : {}),
   });
 }
 
@@ -309,7 +311,13 @@ export function validateGrounding(
 
 async function providerCall<T>(operation: () => Promise<T>): Promise<T> {
   try {
-    return await operation();
+    assertAIBudget();
+    aiBudget.getStore()?.beforeCall();
+    const result = await operation();
+    const usage = (result as { usage?: { input_tokens?: number; output_tokens?: number } })?.usage;
+    aiBudget.getStore()?.onUsage(usage?.input_tokens ?? 0, usage?.output_tokens ?? 0);
+    assertAIBudget();
+    return result;
   } catch (error) {
     if (error instanceof ApiError) throw error;
     // Do not log provider bodies, prompts, audio, client data or secrets.

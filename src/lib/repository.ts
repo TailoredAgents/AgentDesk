@@ -642,8 +642,8 @@ export async function reviewPackage(
             supersedes: replaces ? current.map((f) => f.id) : [],
             humanEdited: Boolean(
               change.humanCorrection ||
-              edited.body !== action.original.body ||
-              edited.dueDate !== action.original.dueDate,
+                edited.body !== action.original.body ||
+                edited.dueDate !== action.original.dueDate,
             ),
           });
         }
@@ -1180,6 +1180,98 @@ export async function createConversationPackage(
   });
 }
 
+/** Save an AI wording revision without making a review decision. The first AI
+ * wording stays in original for the existing review audit and workstyle flow. */
+export async function savePreparedMessageDraft(
+  input: {
+    requestId: string;
+    packageId: string;
+    actionId: string;
+    agentId: string;
+    expectedBody: string;
+    body: string;
+    requestHash: string;
+  },
+  scope: WorkspaceScope = defaultScope,
+) {
+  const body = parse(text(6000), input.body);
+  parse(z.uuid(), input.requestId);
+  const { db } = await getDatabase();
+  await db.transaction(async (tx) => {
+    await lockWorkspace(tx, scope);
+    const previous = (await tx.execute(
+      sql`SELECT request_hash FROM copilot_draft_edits WHERE id=${input.requestId} AND workspace_id=${scope.workspaceId}`,
+    )) as unknown as { rows: { request_hash: string }[] };
+    if (previous.rows[0]) {
+      if (previous.rows[0].request_hash !== input.requestHash)
+        throw new DomainError(
+          "This rewrite request belongs to different work.",
+          409,
+          "REQUEST_CONFLICT",
+        );
+      return;
+    }
+    const [pkg] = await tx
+      .select()
+      .from(tables.workPackages)
+      .where(
+        and(
+          eq(tables.workPackages.id, input.packageId),
+          eq(tables.workPackages.workspaceId, scope.workspaceId),
+          eq(tables.workPackages.agentId, input.agentId),
+        ),
+      );
+    const [action] = await tx
+      .select()
+      .from(tables.proposedActions)
+      .where(
+        and(
+          eq(tables.proposedActions.id, input.actionId),
+          eq(tables.proposedActions.packageId, input.packageId),
+          eq(tables.proposedActions.workspaceId, scope.workspaceId),
+        ),
+      );
+    if (!pkg || !action || action.kind !== "message")
+      throw new DomainError(
+        "The message draft is unavailable.",
+        404,
+        "NOT_FOUND",
+      );
+    if (action.status !== "pending" || action.body !== input.expectedBody)
+      throw new DomainError(
+        "This message changed or was reviewed. Open its current review before trying again.",
+        409,
+        "DRAFT_CHANGED",
+      );
+    await tx
+      .update(tables.proposedActions)
+      .set({ body })
+      .where(eq(tables.proposedActions.id, input.actionId));
+    await tx.execute(
+      sql`INSERT INTO copilot_draft_edits(id,workspace_id,package_id,action_id,request_hash) VALUES(${input.requestId},${scope.workspaceId},${input.packageId},${input.actionId},${input.requestHash})`,
+    );
+    await advanceWorkspaceRevision(tx, scope);
+  });
+}
+
+export async function preparedMessageEditExists(
+  requestId: string,
+  requestHash: string,
+  scope: WorkspaceScope = defaultScope,
+) {
+  const { db } = await getDatabase();
+  const result = (await db.execute(
+    sql`SELECT request_hash FROM copilot_draft_edits WHERE id=${requestId} AND workspace_id=${scope.workspaceId}`,
+  )) as unknown as { rows: { request_hash: string }[] };
+  if (result.rows[0] && result.rows[0].request_hash !== requestHash)
+    throw new DomainError(
+      "This rewrite request belongs to different work.",
+      409,
+      "REQUEST_CONFLICT",
+    );
+  return Boolean(result.rows[0]);
+}
+
 export async function updateCommitment(
   id: string,
   status: "open" | "resolved",
@@ -1382,6 +1474,12 @@ export async function resetSampleWorkspace(
         403,
         "SAMPLE_ONLY",
       );
+    await tx.execute(
+      sql`DELETE FROM copilot_conversations WHERE workspace_id=${scope.workspaceId}`,
+    );
+    await tx.execute(
+      sql`DELETE FROM copilot_draft_edits WHERE workspace_id=${scope.workspaceId}`,
+    );
     for (const table of [
       tables.clientFacts,
       tables.workProductAudits,
