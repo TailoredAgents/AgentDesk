@@ -1,5 +1,8 @@
 # yaml-language-server: $schema=https://render.com/schema/render.yaml.json
-# A protected single-workspace pilot. This file does not deploy anything by itself.
+# Protected sample workspace plus an optional individually authenticated CRM pilot.
+# CRM pilot variables are intentionally optional: set them in Render Environment
+# only after following docs/LOFTY_SETUP.md. No new credentials are required to deploy.
+# This file does not deploy anything by itself.
 services:
   - type: web
     name: agentdesk

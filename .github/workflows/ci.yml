@@ -47,6 +47,12 @@ jobs:
         run: |
           node --input-type=module -e "import pg from 'pg'; const pool = new pg.Pool({connectionString: process.env.DATABASE_URL}); try { await pool.query('CREATE DATABASE agentdesk_test_domain'); } finally { await pool.end(); }"
           npx tsx --test tests/domain.test.ts
+      - name: Test CRM isolation and execution against PostgreSQL
+        env:
+          CRM_TEST_DATABASE_URL: postgresql://agentdesk:ci-only-local-postgres-password@localhost:5432/agentdesk_test_crm
+        run: |
+          node --input-type=module -e "import pg from 'pg'; const pool = new pg.Pool({connectionString: process.env.DATABASE_URL}); try { await pool.query('CREATE DATABASE agentdesk_test_crm'); } finally { await pool.end(); }"
+          npx tsx --test tests/crm.test.ts
       - run: npm run build
       - name: Verify production startup and protected HTTP routes
         run: npm run test:production

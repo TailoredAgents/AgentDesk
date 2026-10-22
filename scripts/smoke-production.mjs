@@ -5,6 +5,8 @@ import { once } from "node:events";
 import net from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import { PDFDocument } from "pdf-lib";
+import pg from "pg";
+import { encode } from "next-auth/jwt";
 
 // This check may only exercise an explicitly disposable local PostgreSQL workspace.
 const database = new URL(process.env.DATABASE_URL || "invalid:");
@@ -30,6 +32,13 @@ const env = {
   APP_URL: "https://agentdesk-smoke.example",
   OPENAI_API_KEY: "",
   NEXT_TELEMETRY_DISABLED: "1",
+  CRM_PILOT_ENABLED: "1",
+  PILOT_AUTH_SECRET: "production-test-individual-auth-secret-32-characters",
+  PILOT_GOOGLE_CLIENT_ID: "mock-identity-client-no-real-login",
+  PILOT_GOOGLE_CLIENT_SECRET: "mock-identity-secret-no-real-login",
+  LOFTY_APP_APPROVED: "0",
+  LOFTY_STATE_VERIFIED: "0",
+  CRM_AI_ENABLED: "0",
 };
 const preflight = spawnSync(
   process.execPath,
@@ -130,6 +139,153 @@ try {
     "content-type": "application/json",
     origin: env.APP_URL,
   };
+  // Even a valid shared-demo session cannot access individually authenticated CRM APIs.
+  assert.equal((await request("/pilot")).status, 200);
+  assert.deepEqual(await (await request("/api/pilot/readiness")).json(), {
+    pilotReady: true,
+    connectionReady: false,
+  });
+  assert.equal(
+    (await request("/api/pilot/workspace", { headers: sessionHeaders })).status,
+    401,
+  );
+  assert.equal(
+    (
+      await request("/api/pilot/lofty/connect", {
+        method: "POST",
+        headers: sessionHeaders,
+        body: "{}",
+      })
+    ).status,
+    401,
+  );
+  assert.equal(
+    (
+      await request("/api/pilot/workspace", {
+        method: "POST",
+        headers: sessionHeaders,
+        body: JSON.stringify({ action: "sync" }),
+      })
+    ).status,
+    401,
+  );
+  const callback = await request(
+    "/api/pilot/lofty/callback?code=untrusted&state=untrusted",
+    { headers: sessionHeaders },
+  );
+  assert.equal(callback.status, 307);
+  assert.ok(!callback.headers.get("location").includes("untrusted"));
+  // These are synthetic signed sessions in the disposable DB, not a live Google login.
+  const authCookieName = "__Secure-authjs.session-token";
+  const syntheticSession = await encode({
+    secret: env.PILOT_AUTH_SECRET,
+    salt: authCookieName,
+    token: { sub: "google:production-smoke-agent" },
+    maxAge: 60,
+  });
+  const individualHeaders = {
+    ...sessionHeaders,
+    cookie: `${authCookieName}=${syntheticSession}`,
+  };
+  assert.equal(
+    (await request("/api/pilot/workspace", { headers: individualHeaders }))
+      .status,
+    403,
+    "unprovisioned individual identities cannot access CRM data",
+  );
+  const pool = new pg.Pool({ connectionString: env.DATABASE_URL });
+  try {
+    await pool.query(
+      "INSERT INTO crm_brokerages (id, name, lofty_team_id) VALUES ('pilot-http-smoke', 'Synthetic HTTP test brokerage', '999888777') ON CONFLICT DO NOTHING",
+    );
+    await pool.query(
+      "INSERT INTO crm_members (id, brokerage_id, subject, label, lofty_user_id, role) VALUES ('pilot-http-agent', 'pilot-http-smoke', 'google:production-smoke-agent', 'Synthetic HTTP Agent', '999888776', 'agent') ON CONFLICT DO NOTHING",
+    );
+    assert.equal(
+      (await request("/api/pilot/workspace", { headers: individualHeaders }))
+        .status,
+      200,
+    );
+    assert.equal(
+      (await request("/api/workspace", { headers: individualHeaders })).status,
+      401,
+      "individual identity cannot impersonate the sample login",
+    );
+    const syntheticRecord = {
+      firstName: "Synthetic reset isolation fixture",
+      teamId: "999888777",
+      assignedUserId: "999888776",
+    };
+    await pool.query(
+      "INSERT INTO crm_records (id, connection_id, kind, external_id, lead_id, data, hash, observed_at) SELECT 'pilot-http-record', id, 'lead', '999888775', '999888775', $1::jsonb, 'synthetic-test-only', now() FROM crm_connections WHERE member_id = 'pilot-http-agent'",
+      [JSON.stringify(syntheticRecord)],
+    );
+    assert.equal(
+      (
+        await request("/api/demo/reset", {
+          method: "POST",
+          headers: sessionHeaders,
+          body: JSON.stringify({ confirmation: "RESTORE FICTIONAL WORKSPACE" }),
+        })
+      ).status,
+      200,
+    );
+    assert.deepEqual(
+      (
+        await pool.query(
+          "SELECT data FROM crm_records WHERE id = 'pilot-http-record'",
+        )
+      ).rows[0].data,
+      syntheticRecord,
+      "restoring the sample cannot modify isolated CRM projections",
+    );
+    assert.equal(
+      (await request("/api/pilot/workspace", { headers: individualHeaders }))
+        .status,
+      200,
+      "sample reset cannot remove individual pilot membership",
+    );
+    assert.equal(
+      (
+        await request("/api/pilot/lofty/connect", {
+          method: "POST",
+          headers: individualHeaders,
+          body: "{}",
+        })
+      ).status,
+      503,
+      "missing Lofty approval blocks Connect",
+    );
+    assert.equal(
+      (
+        await request("/api/pilot/workspace", {
+          method: "POST",
+          headers: { ...individualHeaders, origin: "https://attacker.example" },
+          body: JSON.stringify({ action: "sync" }),
+        })
+      ).status,
+      403,
+    );
+    await pool.query(
+      "UPDATE crm_members SET active = false WHERE id = 'pilot-http-agent'",
+    );
+    assert.equal(
+      (await request("/api/pilot/workspace", { headers: individualHeaders }))
+        .status,
+      403,
+      "deprovisioning takes effect with an already signed session",
+    );
+  } finally {
+    await pool.query("DELETE FROM crm_records WHERE id = 'pilot-http-record'");
+    await pool.query(
+      "DELETE FROM crm_connections WHERE member_id = 'pilot-http-agent'",
+    );
+    await pool.query("DELETE FROM crm_members WHERE id = 'pilot-http-agent'");
+    await pool.query(
+      "DELETE FROM crm_brokerages WHERE id = 'pilot-http-smoke'",
+    );
+    await pool.end();
+  }
   const mutation = (path, body, method = "POST", timeoutMs = 4_000) =>
     request(path, {
       method,
@@ -957,7 +1113,7 @@ try {
     ),
   );
   console.log(
-    `Production HTTP checks passed: healthy in ${Math.round(elapsed)}ms; auth, partial/concurrent approvals, immutable parsed PDF download, version copying, missing-provider failures, approved questions and tasks, confirmed UTC calendar export, coordinated situation changes, idempotent saved example, human correction, refreshed immutable PDF versions, and guarded reset verified.`,
+    `Production HTTP checks passed: healthy in ${Math.round(elapsed)}ms; auth, individual pilot isolation and deprovisioning, missing Lofty configuration, partial/concurrent approvals, immutable parsed PDF download, version copying, missing-provider failures, approved questions and tasks, confirmed UTC calendar export, coordinated situation changes, idempotent saved example, human correction, refreshed immutable PDF versions, and sample-only reset verified.`,
   );
 } catch (error) {
   console.error(logs);

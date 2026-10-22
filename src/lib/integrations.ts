@@ -1,4 +1,4 @@
-/** Provider boundaries deliberately have no network implementations in the pilot. */
+/** Sample-workspace capability display. Real account state lives in lib/crm and /pilot. */
 export type IntegrationProvider =
   "lofty" | "google" | "microsoft" | "communications";
 export type IntegrationConnection = {
@@ -12,7 +12,7 @@ export const integrations: IntegrationConnection[] = [
     provider: "lofty",
     connected: false,
     label: "Lofty",
-    description: "CRM notes stay in AgentDesk. CRM sync is not connected.",
+    description: "Sample CRM notes stay in AgentDesk. Real Lofty accounts connect in the separate individual pilot.",
   },
   {
     provider: "google",

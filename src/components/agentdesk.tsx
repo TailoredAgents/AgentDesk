@@ -17,10 +17,6 @@ import {
   X,
   Info,
   AlertCircle,
-  Mail,
-  CalendarDays,
-  Phone,
-  Database,
   Settings2,
 } from "lucide-react";
 import type { WorkspaceData, Task, Commitment } from "@/lib/types";
@@ -47,6 +43,7 @@ import { SearchPanel } from "./workspace/search-panel";
 import { request } from "./workspace/client-api";
 import { ActivityFeed } from "./workspace/activity-feed";
 import { FollowUp } from "./workspace/follow-up";
+import { Connections } from "./crm/connections";
 
 const viewNames: Record<View, string> = {
   today: "Today",
@@ -604,57 +601,7 @@ export default function AgentDesk() {
           </div>
         </Modal>
       )}
-      {panel === "integrations" && (
-        <Modal
-          title="Your connections, next."
-          subtitle="Provider integrations planned for a future release."
-          onClose={close}
-        >
-          <div className="connections-list">
-            {[
-              {
-                name: "Lofty",
-                type: "CRM · client records and notes",
-                icon: Database,
-              },
-              {
-                name: "Google Workspace",
-                type: "Gmail and Google Calendar",
-                icon: CalendarDays,
-              },
-              {
-                name: "Microsoft 365",
-                type: "Outlook and Microsoft Calendar",
-                icon: Mail,
-              },
-              {
-                name: "Communications",
-                type: "Phone, messaging, and call recordings",
-                icon: Phone,
-              },
-            ].map((c) => (
-              <div key={c.name}>
-                <span className="connection-mark">
-                  <c.icon size={22} />
-                </span>
-                <div>
-                  <h3>{c.name}</h3>
-                  <p>{c.type}</p>
-                </div>
-                <Badge>Planned</Badge>
-              </div>
-            ))}
-            <div className="info-strip">
-              <Link2 size={19} />
-              <p>
-                Provider connections are planned for a future release. Messages
-                approved here are saved internally. Nothing is sent or synced to
-                an external service.
-              </p>
-            </div>
-          </div>
-        </Modal>
-      )}
+      {panel === "integrations" && <Connections onClose={close} />}
       {panel === "activity" && (
         <Modal
           title="The work, all in one place."

@@ -3,6 +3,10 @@ import { authConfiguration, isAuthorized } from "@/lib/auth";
 
 export function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
+  // The pilot has separate Auth.js identity and DB authorization in every handler.
+  // A demo cookie grants no pilot access; the pilot cookie grants no demo access.
+  if (path === "/pilot" || path.startsWith("/pilot/") || path.startsWith("/api/pilot/"))
+    return NextResponse.next();
   if (
     path === "/login" ||
     path === "/api/health" ||

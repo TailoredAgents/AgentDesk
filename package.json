@@ -13,7 +13,8 @@
     "test:production": "node scripts/smoke-production.mjs",
     "test:ai:live": "tsx scripts/evaluate-ai.ts",
     "db:migrate": "tsx scripts/migrate.ts",
-    "db:seed": "tsx scripts/seed.ts"
+    "db:seed": "tsx scripts/seed.ts",
+    "pilot:member": "tsx scripts/provision-pilot.ts"
   },
   "engines": {
     "node": ">=22.0.0"
@@ -23,8 +24,10 @@
     "@fontsource/inter": "^5.2.0",
     "dotenv": "^17.0.0",
     "drizzle-orm": "^0.45.4",
+    "json-bigint": "^1.0.0",
     "lucide-react": "^0.468.0",
     "next": "^16.0.0",
+    "next-auth": "5.0.0-beta.32",
     "openai": "^6.0.0",
     "pdfkit": "^0.20.2",
     "pg": "^8.16.0",
@@ -35,6 +38,7 @@
   "devDependencies": {
     "@playwright/test": "^1.56.0",
     "@tailwindcss/postcss": "^4.1.0",
+    "@types/json-bigint": "^1.0.4",
     "@types/node": "^22.0.0",
     "@types/pdfkit": "^0.17.6",
     "@types/pg": "^8.15.0",

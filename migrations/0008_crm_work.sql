@@ -1,0 +1,4 @@
+CREATE TABLE crm_work (id text PRIMARY KEY, connection_id text NOT NULL REFERENCES crm_connections(id), lead_id text NOT NULL, request_id text NOT NULL, epoch integer NOT NULL, status text NOT NULL, input_hash text NOT NULL, snapshot jsonb, transcript text NOT NULL, content jsonb, error_code text, created_at timestamptz NOT NULL);
+CREATE UNIQUE INDEX crm_work_request ON crm_work (connection_id, request_id);
+CREATE TABLE crm_facts (id text PRIMARY KEY, connection_id text NOT NULL REFERENCES crm_connections(id), lead_id text NOT NULL, work_id text NOT NULL REFERENCES crm_work(id), candidate integer NOT NULL, key text NOT NULL, value text NOT NULL, certainty text NOT NULL, status text NOT NULL, reviewed_by text NOT NULL REFERENCES crm_members(id), reviewed_at timestamptz NOT NULL, supersedes jsonb NOT NULL);
+CREATE UNIQUE INDEX crm_fact_candidate ON crm_facts (work_id, candidate);
