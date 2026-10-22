@@ -180,6 +180,8 @@ Pilot request limits are in-process: 20 AI operations per 10 minutes across the 
 
 See the [validation record and screenshots](docs/VALIDATION.md) for the initial verified results and remaining provider/deployment checks.
 
+The [October 2026 usability and product audit](docs/UX_PRODUCT_AUDIT.md) ranks 35 pages and feature sets, records the essential user journeys, and prioritizes improvements before implementation. Its [coverage ledger and 69 screenshots](docs/UX_AUDIT_EVIDENCE.md) distinguish actual sample interactions from rendered pilot fixtures and unverified live-provider paths.
+
 ```powershell
 npm run typecheck
 npm test
