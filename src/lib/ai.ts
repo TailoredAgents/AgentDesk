@@ -9,6 +9,7 @@ import { z } from "zod";
 import { ApiError } from "./auth";
 import type { Agent, WorkPackage } from "./types";
 import { buildProviderContext, type AIContext } from "./ai-context";
+import { effectiveMessageStyle } from "./workstyle/engine";
 import {
   assertSupportedDates,
   groundedDueDate,
@@ -92,6 +93,7 @@ CONTEXT: Use relevant authorised client notes, relationship history and property
 MEMORY: Return up to 12 observations for practical real estate objectives, explicit communication preferences, buyer requirements, cleaning, photography, staging and listing launch. Each observation value MUST be an exact contiguous excerpt from sourceQuote, which MUST be an exact contiguous excerpt of the current transcript. Use a concise complete statement. Never infer psychology, sensitive traits, or motivations. Certainty describes whether the statement is confirmed, requested or uncertain, not confidence in extraction. A preference for a photo date is requested, never booked. An explicitly stated communication preference is confirmed. intent replacement requires explicit rescheduling/change/cancellation language; otherwise information. effectiveDate requires an unambiguous date with year in that same quote; otherwise null. Do not repeat unchanged facts or existing unresolved questions as new facts. Current reviewed facts are supplied to all five roles. Do not generate task duplicates; the application coordinates existing tasks. Keep unanswered patio questions open.
 DATES: Return a task dueDate as YYYY-MM-DD only when its sourceQuote contains an unambiguous explicit date with a year (ISO or written month/day/year). Never borrow another task's date. Keep relative weekday timing in the body and use dueDate:null. Do not guess a recording's date or year. If a weekday disagrees with a calendar date, dates conflict, or the year is missing, ask for clarification and leave the dueDate null. Do not choose between conflicting dates unless the source explicitly resolves the conflict.
 WORK: Include one summary action, one CRM note and one follow-up message if a message is appropriate, plus only useful, concrete tasks supported by the transcript. Use kind question for each explicit unanswered client question or unresolved client decision that needs tracking; quote the question, use certainty uncertain, and do not invent an answer. Keep its dueDate null unless the quoted source explicitly states an unambiguous dated deadline for that answer. Do not duplicate an existing open question/commitment. A question is a proposal to save an unresolved record after human approval, never a completed answer. A listing_update is a proposed note, never an automatic change to a price, stage or appointment. If the property is null, never propose a listing_update. Keep action titles concise. Avoid duplicating tasks. No unrelated coaching or marketing advice. Requests to send a checklist create a task and a draft that says it will be prepared; never claim a file is attached. Do not claim work was sent, synced, or scheduled by AgentDesk.
+WORKSTYLE: Use approvedWorkstyle.noteFormat only for CRM notes, never to alter client facts. Mandatory brokerage standards and client-specific requirements take priority. Formatting does not authorize sending, scheduling or removing required review.
 VOICE: Respect the client’s current reviewed communication preferences; do not revive a superseded preference from a writing example. Apply the full communicationStyle: tone, length, directness, greeting, signoff, preferredWords, avoid, examples. Greeting/signoff can be 'none'; do not add them anyway. Directness controls how quickly to get to the useful next step. Preferred wording is optional vocabulary, not new facts. Examples establish rhythm, contractions and punctuation, not promises or details. Write for this relationship, with a specific reason and one clear next step. Warm/direct and formal/concise profiles should sound recognisably different. Avoid generic openings, corporate filler, exaggerated enthusiasm, repetition, needless sign-offs and invented rapport. Never write 'I hope this message finds you well'. Preserve every qualification while changing tone. A checklist not yet prepared must not be described as attached, sent, or ready.
 If source material is insufficient or contains conflicting facts, explain the uncertainty and propose clarification. Never fill gaps to make the result feel complete.`;
 
@@ -360,7 +362,19 @@ export async function generateFollowUpPackage(
       "insufficient_context",
     );
   return generatePackage(
-    { ...context, transcript: sourceSnapshot },
+    {
+      ...context,
+      workflow: "follow_up",
+      agent: {
+        ...context.agent,
+        style: effectiveMessageStyle(
+          context.agent.style,
+          context.agent.workstyle,
+          "follow_up",
+        ),
+      },
+      transcript: sourceSnapshot,
+    },
     "followup",
   );
 }
@@ -448,6 +462,19 @@ export async function rewriteMessage(
   body: string,
   instruction: "shorter" | "natural" | "professional",
 ) {
+  if (workPackage.recommendationId || context.workflow === "follow_up")
+    context = {
+      ...context,
+      workflow: "follow_up",
+      agent: {
+        ...context.agent,
+        style: effectiveMessageStyle(
+          context.agent.style,
+          context.agent.workstyle,
+          "follow_up",
+        ),
+      },
+    };
   const openai = client();
   const rewriteSchema = z.object({ body: z.string().min(1).max(6000) });
   const response = await providerCall(() =>

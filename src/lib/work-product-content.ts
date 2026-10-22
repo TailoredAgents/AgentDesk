@@ -278,6 +278,7 @@ export function buildWorkProductSnapshot(
     }
   return {
     workspaceName: data.workspace.name,
+    ...(agent.workstyle ? { workstyle: agent.workstyle } : {}),
     sample: data.workspace.sample,
     agent: { id: agent.id, name: agent.name, email: agent.email },
     client: client ? { id: client.id, name: client.name } : null,

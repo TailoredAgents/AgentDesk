@@ -14,6 +14,8 @@ import type { CrmService } from "@/lib/crm/service";
 import type { SharedContext } from "@/lib/crm/work";
 import { capabilityLabels, allCapabilities } from "@/lib/crm/types";
 import { Badge } from "../ui";
+import { Workstyle } from "../workspace/workstyle";
+import { MessageReview } from "./message-review";
 
 type State = Awaited<ReturnType<CrmService["status"]>>;
 const statusNames: Record<string, string> = {
@@ -256,6 +258,24 @@ export function PilotWorkspace() {
           </button>
         </div>
       )}
+      <details className="crm-card">
+        <summary>Agent Workstyle · your preferences and suggestions</summary>
+        <Workstyle
+          endpoint="/api/pilot/workstyle"
+          notify={(message, tone) =>
+            tone === "error" ? setError(message) : setNotice(message)
+          }
+          onChanged={async () => {
+            await load();
+            if (selected)
+              setContext(
+                await api<SharedContext>(
+                  `/api/pilot/workspace?leadId=${selected}`,
+                ),
+              );
+          }}
+        />
+      </details>
       {notice && (
         <div className="crm-notice" role="status">
           <Check size={18} />
@@ -706,30 +726,24 @@ export function PilotWorkspace() {
                           ))}
                         </div>
                         {w.content.messageDraft && (
-                          <div className="crm-draft">
-                            <h4>Personal-phone message draft</h4>
-                            <p>{w.content.messageDraft}</p>
-                            <button
-                              className="button secondary"
-                              onClick={async () => {
-                                try {
-                                  await navigator.clipboard.writeText(
-                                    w.content!.messageDraft,
-                                  );
-                                  setNotice(
-                                    "Draft copied. Review and send from your own phone.",
-                                  );
-                                } catch {
-                                  setError(
-                                    "Copy was unavailable. Select the draft text to copy it manually.",
-                                  );
-                                }
-                              }}
-                            >
-                              <Copy size={15} />
-                              Copy draft
-                            </button>
-                          </div>
+                          <MessageReview
+                            key={w.id + String(Boolean(w.reviewedMessage))}
+                            workId={w.id}
+                            original={w.content.messageDraft}
+                            approved={w.reviewedMessage?.body}
+                            disabled={busy || w.status !== "ready"}
+                            onReview={async (workId, body) =>
+                              Boolean(
+                                await act(
+                                  { action: "review_message", workId, body },
+                                  "Message draft approved for copying. Nothing was sent.",
+                                ),
+                              )
+                            }
+                            notify={(message, error) =>
+                              error ? setError(message) : setNotice(message)
+                            }
+                          />
                         )}
                         {w.content.noteDraft && (
                           <div className="crm-draft">

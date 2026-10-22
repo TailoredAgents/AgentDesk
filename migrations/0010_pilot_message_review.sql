@@ -1,0 +1,1 @@
+CREATE TABLE crm_message_reviews (work_id text PRIMARY KEY REFERENCES crm_work(id), connection_id text NOT NULL REFERENCES crm_connections(id), lead_id text NOT NULL, body text NOT NULL, reviewed_at timestamptz NOT NULL);

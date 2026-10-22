@@ -66,13 +66,19 @@ export async function POST(
           "outdated_draft",
         );
       return rewriteMessage(
-        buildAIContext(
-          workspace,
-          workPackage.agentId,
-          workPackage.clientId,
-          workPackage.propertyId,
-          conversation.transcript,
-        ),
+        {
+          ...buildAIContext(
+            workspace,
+            workPackage.agentId,
+            workPackage.clientId,
+            workPackage.propertyId,
+            conversation.transcript,
+          ),
+          workflow:
+            conversation.source === "followup" || workPackage.recommendationId
+              ? "follow_up"
+              : "conversation",
+        },
         workPackage,
         input.text ?? action.body,
         input.instruction,

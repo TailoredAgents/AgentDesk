@@ -6,6 +6,8 @@ AgentDesk turns a client conversation into coordinated work for an agent to revi
 
 The Listing Coordinator also produces editable seller preparation packages with retained sources and version history. Explicit approval creates a downloadable PDF stored in PostgreSQL. Appointment briefings use the same work-product workflow on demand. Calendar files help agents use confirmed schedules in their existing tools; no separate messaging number or connected external account is required.
 
+**Agent Workstyle** adds personal communication, note, briefing, and checklist preferences to Settings. Repeated approved edits can produce evidence-backed suggestions; users accept, customize, dismiss, undo, or disable them. Approved choices affect scoped future work while brokerage requirements and client facts remain separate. See the [Jordan demonstration](docs/WORKSTYLE_DEMO.md) and [implementation/privacy details](docs/WORKSTYLE.md). The demonstration works without Lofty or live AI.
+
 The presentation runs one protected, fictional **Sample Workspace**, The Willow Collective, with six agents. It is a working foundation for a paid pilot, with a deliberately limited access model. Names, addresses, prices, schedules, and conversations are sample data. Its demonstration timeline is anchored to Friday, October 23, 2026, with appointment times displayed in Eastern time. Recommendations use that explicit sample date. Photography illustrates the fictional properties; see [ATTRIBUTIONS.md](ATTRIBUTIONS.md).
 
 ## Run locally

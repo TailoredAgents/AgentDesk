@@ -23,7 +23,7 @@ import {
   legacySarahTranscript,
 } from "./seed-data";
 
-export const SAMPLE_DATA_VERSION = 6;
+export const SAMPLE_DATA_VERSION = 7;
 type SeedConnection = Pick<Database, "insert" | "update" | "select">;
 const scoped = <T extends object>(record: T) => ({
   ...record,
@@ -36,6 +36,8 @@ export async function populateSampleWorkspace(tx: SeedConnection) {
     .insert(schema.agents)
     .values(sampleAgents.map(scoped))
     .onConflictDoNothing();
+  const { seedWorkstyle } = await import("../workstyle/sample");
+  await seedWorkstyle(tx);
   await tx
     .insert(schema.clients)
     .values(sampleClients.map(scoped))

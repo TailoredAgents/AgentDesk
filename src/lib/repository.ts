@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { observe, readWorkstyleContext } from "./workstyle/service";
+import { messageSignals, documentSignals } from "./workstyle/engine";
 import { isDeepStrictEqual } from "node:util";
 import { and, asc, desc, eq, sql, getTableColumns } from "drizzle-orm";
 import { z } from "zod";
@@ -397,6 +399,18 @@ export async function getWorkspace(
     })),
     recommendations: [],
   };
+  for (const agent of result.agents) {
+    const workstyle = await readWorkstyleContext(db, {
+      kind: "sample",
+      workspaceId: w,
+      agentId: agent.id,
+    });
+    if (
+      Object.keys(workstyle.values).length ||
+      workstyle.requirements.length > 1
+    )
+      agent.workstyle = workstyle;
+  }
   result.recommendations = deriveFollowUps(result);
   return result;
 }
@@ -528,6 +542,39 @@ export async function reviewPackage(
         originalAvailable: action.originalAvailable,
       });
       let detail = edited.body;
+      if (
+        scope.workspaceId === SAMPLE_WORKSPACE_ID &&
+        action.kind === "message" &&
+        action.originalAvailable &&
+        decision.status === "approved"
+      ) {
+        const [conversation] = await tx
+          .select()
+          .from(tables.conversations)
+          .where(
+            and(
+              eq(tables.conversations.id, workPackage.conversationId),
+              eq(tables.conversations.workspaceId, scope.workspaceId),
+            ),
+          );
+        if (workPackage.recommendationId || conversation?.source === "followup")
+          await observe(
+            tx,
+            {
+              kind: "sample",
+              workspaceId: scope.workspaceId,
+              agentId: workPackage.agentId,
+            },
+            {
+              sourceKey: `message:${action.id}`,
+              contextKey: workPackage.clientId,
+              workflow: "follow_up",
+              before: action.original.body,
+              after: edited.body,
+              signals: messageSignals(action.original.body, edited.body),
+            },
+          );
+      }
       if (decision.status === "approved") {
         if (action.kind === "intelligence") {
           if (edited.body.length > 1000)
@@ -1253,63 +1300,57 @@ export async function proposeFactCorrection(
       clientId: fact.clientId,
       propertyId: fact.propertyId,
     };
-    await tx
-      .insert(tables.conversations)
-      .values({
-        id: conversationId,
-        ...links,
-        title,
-        transcript,
-        source: "correction",
-        createdAt: now,
-      });
-    await tx
-      .insert(tables.workPackages)
-      .values({
-        id: packageId,
-        ...links,
-        conversationId,
-        title,
-        summary:
-          "A human correction is ready for explicit review. Earlier evidence will remain in history.",
-        facts: [],
-        clarifications: [],
-        status: "pending",
-        origin: "human",
-        createdAt: now,
-        requestId: clean.requestId,
-      });
-    await tx
-      .insert(tables.proposedActions)
-      .values({
-        id: actionId,
-        workspaceId: scope.workspaceId,
-        packageId,
-        position: 0,
-        kind: "intelligence",
-        title,
-        body: clean.value,
-        dueDate: clean.effectiveDate,
-        certainty: clean.certainty,
-        sourceQuote: transcript,
-        status: "pending",
-        original: { title, body: clean.value, dueDate: clean.effectiveDate },
-        originalAvailable: true,
-        change: {
-          type: "fact",
-          observation: {
-            topic: fact.topic,
-            value: clean.value,
-            certainty: clean.certainty,
-            effectiveDate: clean.effectiveDate,
-            sourceQuote: transcript,
-            intent: "replacement",
-          },
-          disposition: clean.retire ? "retire" : "replace",
-          before,
-          humanCorrection: true,
+    await tx.insert(tables.conversations).values({
+      id: conversationId,
+      ...links,
+      title,
+      transcript,
+      source: "correction",
+      createdAt: now,
+    });
+    await tx.insert(tables.workPackages).values({
+      id: packageId,
+      ...links,
+      conversationId,
+      title,
+      summary:
+        "A human correction is ready for explicit review. Earlier evidence will remain in history.",
+      facts: [],
+      clarifications: [],
+      status: "pending",
+      origin: "human",
+      createdAt: now,
+      requestId: clean.requestId,
+    });
+    await tx.insert(tables.proposedActions).values({
+      id: actionId,
+      workspaceId: scope.workspaceId,
+      packageId,
+      position: 0,
+      kind: "intelligence",
+      title,
+      body: clean.value,
+      dueDate: clean.effectiveDate,
+      certainty: clean.certainty,
+      sourceQuote: transcript,
+      status: "pending",
+      original: { title, body: clean.value, dueDate: clean.effectiveDate },
+      originalAvailable: true,
+      change: {
+        type: "fact",
+        observation: {
+          topic: fact.topic,
+          value: clean.value,
+          certainty: clean.certainty,
+          effectiveDate: clean.effectiveDate,
+          sourceQuote: transcript,
+          intent: "replacement",
         },
-      });
+        disposition: clean.retire ? "retire" : "replace",
+        before,
+        humanCorrection: true,
+      },
+    });
     await advanceWorkspaceRevision(tx, scope);
     return packageId;
   });
@@ -1666,6 +1707,28 @@ export async function createWorkProductDraft(
       createdAt: now,
     });
     await advanceWorkspaceRevision(tx, scope);
+    if (
+      scope.workspaceId === SAMPLE_WORKSPACE_ID &&
+      clean.kind === "appointment_briefing" &&
+      clean.appointmentId &&
+      !clean.copyVersionId
+    )
+      await observe(
+        tx,
+        {
+          kind: "sample",
+          workspaceId: scope.workspaceId,
+          agentId: clean.agentId,
+        },
+        {
+          sourceKey: `briefing:${clean.appointmentId}`,
+          contextKey: clean.appointmentId,
+          workflow: "appointment_briefing",
+          before: "Agent requested an appointment briefing.",
+          after: `Prepared draft: ${content.title}`,
+          signals: { briefingRequested: true },
+        },
+      );
     return { productId, versionId };
   });
   return { ...ids, workspace: await getWorkspace(scope) };
@@ -1874,6 +1937,33 @@ export async function reviewWorkProductVersion(
         "PDF_REQUIRED",
       );
     const now = new Date().toISOString();
+    if (
+      scope.workspaceId === SAMPLE_WORKSPACE_ID &&
+      parent.kind === "seller_preparation" &&
+      clean.decision === "approved"
+    )
+      await observe(
+        tx,
+        {
+          kind: "sample",
+          workspaceId: scope.workspaceId,
+          agentId: parent.agentId,
+        },
+        {
+          sourceKey: `seller:${productId}`,
+          contextKey: parent.propertyId || parent.clientId || productId,
+          workflow: "seller_preparation",
+          before: version.originalContent.sections
+            .filter((s) => s.kind === "general_guidance")
+            .flatMap((s) => s.items.map((i) => i.text))
+            .join("\n"),
+          after: content.sections
+            .filter((s) => s.kind === "general_guidance")
+            .flatMap((s) => s.items.map((i) => i.text))
+            .join("\n"),
+          signals: documentSignals(version.originalContent, content),
+        },
+      );
     const contentChanged = !isDeepStrictEqual(content, version.content);
     const editRevision = version.editRevision + Number(contentChanged);
     const reviewedAt = contentChanged

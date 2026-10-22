@@ -18,6 +18,7 @@ import {
   useDraftGuard,
 } from "../ui";
 import { request } from "./client-api";
+import { Workstyle } from "./workstyle";
 
 export function Settings({
   data,
@@ -254,6 +255,14 @@ export function Settings({
             </label>
           </details>
         </fieldset>
+        <Workstyle
+          key={agent.id}
+          agentId={agent.id}
+          notify={notify}
+          onChanged={async () =>
+            onUpdate(await request<WorkspaceData>("/api/workspace"))
+          }
+        />
         <div className="role-preview">
           <div>
             <h3>Team leader presentation</h3>

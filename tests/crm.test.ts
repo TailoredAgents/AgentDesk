@@ -1,3 +1,4 @@
+import { getWorkstyle, changeWorkstyle } from "../src/lib/workstyle/service";
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { randomUUID } from "node:crypto";
@@ -1118,4 +1119,117 @@ test("bounded AI context preserves lead and note context even with a large activ
   assert.ok(input.sources.some((s) => s.kind === "note"));
   assert.equal(input.sources.filter((s) => s.kind === "activity").length, 20);
   assert.equal(input.coverage.omittedRecords, 130);
+});
+
+test("individual message review learns only with opt-in, cannot cross agents, and removes excerpts on disconnect", async () => {
+  const f = await fixture(),
+    other = await fixture();
+  await ready(f);
+  const scope = {
+    kind: "pilot" as const,
+    memberId: f.memberId,
+    brokerageId: f.brokerageId,
+  };
+  let profile = await getWorkstyle(db, scope);
+  assert.equal(profile.enabled, false);
+  const original =
+    "Dear Client, I wanted to take a moment to follow up regarding your preparation checklist and ask whether there are any items you would like to review together. Please let me know which questions you would like to discuss.";
+  const approved =
+    "Which preparation checklist items would you like to review together?";
+  const generate = async () => ({ ...fakeWork(""), messageDraft: original });
+  const first = await f.service.prepare(
+    f.subject,
+    f.leadId,
+    randomUUID(),
+    "",
+    generate,
+  );
+  await assert.rejects(
+    f.service.reviewMessage(other.subject, first.id, approved),
+    isDenied,
+  );
+  await f.service.reviewMessage(f.subject, first.id, approved);
+  assert.equal((await getWorkstyle(db, scope)).evidence.length, 0);
+  profile = await changeWorkstyle(db, scope, {
+    action: "learning",
+    revision: profile.revision,
+    enabled: true,
+  });
+  const next = await f.service.prepare(
+    f.subject,
+    f.leadId,
+    randomUUID(),
+    "",
+    generate,
+  );
+  await Promise.all([
+    f.service.reviewMessage(f.subject, next.id, approved),
+    f.service.reviewMessage(f.subject, next.id, approved),
+  ]);
+  profile = await getWorkstyle(db, scope);
+  assert.equal(profile.evidence.length, 1);
+  assert.equal(profile.evidence[0].fictional, false);
+  assert.equal(
+    (await f.service.status(f.subject)).work.find((w) => w.id === next.id)
+      ?.reviewedMessage?.body,
+    approved,
+  );
+  assert.equal(f.provider.writes, 0);
+  await assert.rejects(
+    f.service.reviewMessage(f.subject, next.id, "Different approved message"),
+  );
+  profile = await changeWorkstyle(db, scope, {
+    action: "configure",
+    revision: profile.revision,
+    values: { followupLength: "concise" },
+  });
+  const context = await f.service.leadContext(f.subject, f.leadId);
+  assert.equal(
+    providerWorkInput(context, "").workstyle?.values.followupLength,
+    "concise",
+  );
+  await f.service.disconnect(f.subject);
+  profile = await getWorkstyle(db, scope);
+  assert.equal(profile.evidence.length, 0);
+  assert.equal(profile.context.values.followupLength, "concise");
+  assert.equal(
+    (
+      await db
+        .select()
+        .from(s.messageReviews)
+        .where(
+          eq(
+            s.messageReviews.connectionId,
+            (await f.service.status(f.subject)).connection.id,
+          ),
+        )
+    ).length,
+    0,
+  );
+});
+
+test("workstyle changes during CRM generation invalidate the prepared draft", async () => {
+  const f = await fixture();
+  await ready(f);
+  const scope = {
+    kind: "pilot" as const,
+    memberId: f.memberId,
+    brokerageId: f.brokerageId,
+  };
+  const profile = await getWorkstyle(db, scope);
+  const saved = await f.service.prepare(
+    f.subject,
+    f.leadId,
+    randomUUID(),
+    "",
+    async () => {
+      await changeWorkstyle(db, scope, {
+        action: "configure",
+        revision: profile.revision,
+        values: { noteFormat: "bullets" },
+      });
+      return fakeWork("");
+    },
+  );
+  assert.equal(saved.status, "context_changed");
 });

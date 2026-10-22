@@ -139,6 +139,14 @@ export const work = pgTable(
   },
   (t) => [uniqueIndex("crm_work_request").on(t.connectionId, t.requestId)],
 );
+/** Approval is for a copyable draft, never permission to send. */
+export const messageReviews = pgTable("crm_message_reviews", {
+  workId: text("work_id").primaryKey(),
+  connectionId: text("connection_id").notNull(),
+  leadId: text("lead_id").notNull(),
+  body: text("body").notNull(),
+  reviewedAt: at("reviewed_at").notNull(),
+});
 export const facts = pgTable(
   "crm_facts",
   {

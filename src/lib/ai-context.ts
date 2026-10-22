@@ -1,9 +1,11 @@
 import { currentContextText, currentFacts } from "./intelligence";
+import { effectiveMessageStyle } from "./workstyle/engine";
 import type { ClientFact } from "./intelligence-types";
 import { ApiError } from "./auth";
 import type { Agent, Client, Property, WorkspaceData } from "./types";
 
 export type AIContext = {
+  workflow?: "conversation" | "follow_up";
   agent: Agent;
   client: Client;
   property: Property | null;
@@ -159,7 +161,11 @@ export function buildProviderContext(context: AIContext) {
     agent: {
       name: context.agent.name,
       communicationStyle: {
-        ...context.agent.style,
+        ...effectiveMessageStyle(
+          context.agent.style,
+          context.agent.workstyle,
+          context.workflow || "conversation",
+        ),
         examples: currentContextText(
           context.agent.style.examples,
           context.obsoleteFacts ?? [],
@@ -176,5 +182,11 @@ export function buildProviderContext(context: AIContext) {
       .slice(0, 3)
       .map((message) => message.slice(0, 1500)),
     source: context.transcript,
+    approvedWorkstyle: {
+      noteFormat: context.agent.workstyle?.values.noteFormat ?? null,
+      mandatoryBrokerageStandards: context.agent.workstyle?.requirements ?? [],
+      scope: context.workflow || "conversation",
+      rule: "Formatting preferences are not client facts. Client-specific communication requests and mandatory brokerage standards take priority. No preference authorizes a new action.",
+    },
   };
 }

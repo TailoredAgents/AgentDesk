@@ -13,6 +13,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const id = z.string().regex(/^[1-9]\d{0,18}$/);
 const command = z.discriminatedUnion("action", [
+  z
+    .object({
+      action: z.literal("review_message"),
+      workId: z.uuid(),
+      body: z.string().trim().min(3).max(2500),
+    })
+    .strict(),
   z.object({ action: z.enum(["sync", "disconnect"]) }).strict(),
   z.object({ action: z.literal("refresh"), leadId: id }).strict(),
   z
@@ -71,6 +78,10 @@ export async function POST(request: Request) {
     const body = await readJson(request, command),
       service = await crmService();
     switch (body.action) {
+      case "review_message":
+        return jsonResponse(
+          await service.reviewMessage(subject, body.workId, body.body),
+        );
       case "sync":
         return jsonResponse(await service.sync(subject));
       case "disconnect":

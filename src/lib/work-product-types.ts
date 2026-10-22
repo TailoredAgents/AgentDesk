@@ -1,22 +1,36 @@
 export type WorkProductKind = "seller_preparation" | "appointment_briefing";
-export type WorkProductSectionKind = "recorded_facts" | "general_guidance" | "open_questions" | "next_steps";
+export type WorkProductSectionKind =
+  "recorded_facts" | "general_guidance" | "open_questions" | "next_steps";
 export type WorkProductContent = {
   title: string;
   introduction: string;
   sections: {
     title: string;
     kind: WorkProductSectionKind;
-    items: { text: string; sourceId: string | null; sourceQuote: string | null; certainty: "confirmed" | "requested" | "uncertain" | "general" }[];
+    items: {
+      text: string;
+      sourceId: string | null;
+      sourceQuote: string | null;
+      certainty: "confirmed" | "requested" | "uncertain" | "general";
+    }[];
   }[];
 };
 export type WorkProductSource = { id: string; label: string; text: string };
 export type WorkProductSnapshot = {
+  workstyle?: import("./workstyle/types").WorkstyleContext;
   workspaceName: string;
   sample: boolean;
   agent: { id: string; name: string; email: string };
   client: { id: string; name: string } | null;
   property: { id: string; address: string; city: string } | null;
-  appointment: { id: string; title: string; startsAt: string; endsAt: string; location: string; status: "confirmed" | "tentative" } | null;
+  appointment: {
+    id: string;
+    title: string;
+    startsAt: string;
+    endsAt: string;
+    location: string;
+    status: "confirmed" | "tentative";
+  } | null;
   sources: WorkProductSource[];
 };
 export type WorkProductVersion = {

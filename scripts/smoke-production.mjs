@@ -175,6 +175,11 @@ try {
   );
   assert.equal(callback.status, 307);
   assert.ok(!callback.headers.get("location").includes("untrusted"));
+  assert.equal(
+    (await request("/api/pilot/workstyle", { headers: sessionHeaders })).status,
+    401,
+    "demo sessions cannot read real workstyle profiles",
+  );
   // These are synthetic signed sessions in the disposable DB, not a live Google login.
   const authCookieName = "__Secure-authjs.session-token";
   const syntheticSession = await encode({
@@ -216,6 +221,46 @@ try {
       teamId: "999888777",
       assignedUserId: "999888776",
     };
+    const privateProfile = await (
+      await request("/api/pilot/workstyle", { headers: individualHeaders })
+    ).json();
+    assert.equal(privateProfile.enabled, false);
+    assert.equal(
+      (
+        await request("/api/pilot/workstyle", {
+          method: "POST",
+          headers: individualHeaders,
+          body: JSON.stringify({
+            action: "configure",
+            revision: privateProfile.revision,
+            values: { noteFormat: "bullets" },
+          }),
+        })
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        await request("/api/pilot/workstyle", {
+          method: "POST",
+          headers: { ...individualHeaders, origin: "https://attacker.example" },
+          body: JSON.stringify({
+            action: "learning",
+            revision: 1,
+            enabled: true,
+          }),
+        })
+      ).status,
+      403,
+    );
+    assert.equal(
+      (
+        await request("/api/agents/jordan/workstyle", {
+          headers: individualHeaders,
+        })
+      ).status,
+      401,
+    );
     await pool.query(
       "INSERT INTO crm_records (id, connection_id, kind, external_id, lead_id, data, hash, observed_at) SELECT 'pilot-http-record', id, 'lead', '999888775', '999888775', $1::jsonb, 'synthetic-test-only', now() FROM crm_connections WHERE member_id = 'pilot-http-agent'",
       [JSON.stringify(syntheticRecord)],
@@ -244,6 +289,60 @@ try {
         .status,
       200,
       "sample reset cannot remove individual pilot membership",
+    );
+    const retainedPrivateProfile = await (
+      await request("/api/pilot/workstyle", { headers: individualHeaders })
+    ).json();
+    assert.equal(
+      retainedPrivateProfile.preferences.noteFormat.value,
+      "bullets",
+      "sample reset preserves private workstyle",
+    );
+    const jordanProfile = await (
+      await request("/api/agents/jordan/workstyle", { headers: sessionHeaders })
+    ).json();
+    const learningSuggestion = jordanProfile.suggestions.find(
+      (s) => s.rule === "followup_style" && s.status === "pending",
+    );
+    assert.ok(learningSuggestion);
+    const acceptedResponse = await request("/api/agents/jordan/workstyle", {
+      method: "POST",
+      headers: sessionHeaders,
+      body: JSON.stringify({
+        action: "suggestion",
+        id: learningSuggestion.id,
+        decision: "accept",
+        values: learningSuggestion.proposed,
+        revision: jordanProfile.revision,
+      }),
+    });
+    assert.equal(acceptedResponse.status, 200);
+    const acceptedProfile = await acceptedResponse.json();
+    const styledWorkspace = await (
+      await request("/api/workspace", { headers: sessionHeaders })
+    ).json();
+    assert.equal(
+      styledWorkspace.agents.find((a) => a.id === "jordan").workstyle.values
+        .followupLength,
+      "concise",
+    );
+    assert.equal(
+      styledWorkspace.agents.find((a) => a.id === "olivia").workstyle,
+      undefined,
+    );
+    assert.equal(
+      (
+        await request("/api/agents/jordan/workstyle", {
+          method: "POST",
+          headers: sessionHeaders,
+          body: JSON.stringify({
+            action: "undo",
+            revision: acceptedProfile.revision,
+            id: acceptedProfile.history[0].id,
+          }),
+        })
+      ).status,
+      200,
     );
     assert.equal(
       (
@@ -274,6 +373,11 @@ try {
         .status,
       403,
       "deprovisioning takes effect with an already signed session",
+    );
+    assert.equal(
+      (await request("/api/pilot/workstyle", { headers: individualHeaders }))
+        .status,
+      403,
     );
   } finally {
     await pool.query("DELETE FROM crm_records WHERE id = 'pilot-http-record'");

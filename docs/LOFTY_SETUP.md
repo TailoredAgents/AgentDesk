@@ -2,6 +2,8 @@
 
 This release provides an isolated CRM foundation at `/pilot`. It does not claim a live Lofty connection. The existing six-agent fictional workspace, Sarah/Willow demonstration, documents/PDFs, tasks, listings, and reset remain at `/` with the existing shared demo login.
 
+Each active pilot member also has a private [Agent Workstyle profile](WORKSTYLE.md), configurable without a Lofty connection. Behavioral suggestions start off. Opting in allows the member's own AgentDesk message edits and explicit approvals to contribute evidence; external CRM activity is not mined. Approved messages are saved for copying, never sent. Workstyle does not change CRM synchronization, ownership, or write authorization.
+
 Read the [capability investigation](LOFTY_CAPABILITIES.md) first. The public OAuth guide does not document state echo; that is a **release gate**, not a security check to remove if the first callback fails.
 
 ## What is implemented

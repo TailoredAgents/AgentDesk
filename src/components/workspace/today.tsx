@@ -95,6 +95,25 @@ export function Today({
     listings[0];
   return (
     <>
+      {agent.workstyle?.values.briefingShortcut === "show" &&
+        appointments[0] && (
+          <div className="personal-workflow-shortcut">
+            <CalendarDays size={19} />
+            <div>
+              <strong>Your appointment preparation</strong>
+              <p>
+                {appointments[0].title} · Personal shortcut · Drafts require
+                review
+              </p>
+            </div>
+            <button
+              className="button secondary"
+              onClick={() => setAppointmentId(appointments[0].id)}
+            >
+              Open preparation <ArrowRight size={14} />
+            </button>
+          </div>
+        )}
       <div className="page-heading">
         <div>
           <div className="eyebrow">

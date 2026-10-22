@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
+import { getWorkstyle, changeWorkstyle } from "../src/lib/workstyle/service";
+import {
+  applyDocumentWorkstyle,
+  resolveWorkstyle,
+} from "../src/lib/workstyle/engine";
+import { SAMPLE_WORKSPACE_ID } from "../src/lib/db/seed-data";
 import { after, before, test } from "node:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
@@ -2162,4 +2168,92 @@ test("approving a requested change retains the confirmed arrangement until a hum
     2,
   );
   await resetSampleWorkspace(SAMPLE_RESET_CONFIRMATION);
+});
+
+test("real review transactions record one scoped workstyle example and sample reset restores the fictional baseline", async () => {
+  let workspace = await resetSampleWorkspace(SAMPLE_RESET_CONFIRMATION);
+  const { db } = await getDatabase();
+  const scope = {
+    kind: "sample" as const,
+    workspaceId: SAMPLE_WORKSPACE_ID,
+    agentId: "jordan",
+  };
+  let profile = await getWorkstyle(db, scope);
+  assert.equal(profile.evidence.length, 8);
+  const pkg = workspace.packages.find((p) => p.id === "package-sarah")!;
+  const action = pkg.actions.find((a) => a.kind === "message")!;
+  const input = {
+    decisions: [
+      {
+        id: action.id,
+        status: "approved" as const,
+        body: "Which preparation checklist items would you like to review together?",
+      },
+    ],
+  };
+  await Promise.all([
+    reviewPackage(pkg.id, input),
+    reviewPackage(pkg.id, input),
+  ]);
+  profile = await getWorkstyle(db, scope);
+  assert.equal(
+    profile.evidence.filter((e) => e.sourceKey === `message:${action.id}`)
+      .length,
+    1,
+  );
+  const product = workspace.workProducts.find(
+    (p) => p.id === "product-sarah-preparation",
+  )!;
+  const version = product.versions[0];
+  const content = applyDocumentWorkstyle(
+    version.content,
+    "seller_preparation",
+    resolveWorkstyle({
+      sellerPhotoChecklist: {
+        value: "include",
+        source: "configured",
+        updatedAt: new Date().toISOString(),
+      },
+    }),
+  );
+  const pdf = await pdfFor(product, version, content);
+  const decision = {
+    decision: "approved" as const,
+    expectedEditRevision: 0,
+    content,
+    ...pdf,
+  };
+  await Promise.all([
+    reviewWorkProductVersion(product.id, version.id, decision),
+    reviewWorkProductVersion(product.id, version.id, decision),
+  ]);
+  profile = await getWorkstyle(db, scope);
+  assert.equal(
+    profile.evidence.filter(
+      (e) =>
+        e.sourceKey === `seller:${product.id}` && e.signals.photoChecklistAdded,
+    ).length,
+    1,
+  );
+  profile = await changeWorkstyle(db, scope, {
+    action: "configure",
+    revision: profile.revision,
+    values: { noteFormat: "bullets" },
+  });
+  const other = {
+    kind: "sample" as const,
+    workspaceId: SAMPLE_WORKSPACE_ID,
+    agentId: "olivia",
+  };
+  assert.equal((await getWorkstyle(db, other)).evidence.length, 0);
+  workspace = await resetSampleWorkspace(SAMPLE_RESET_CONFIRMATION);
+  const restored = await getWorkstyle(db, scope);
+  assert.deepEqual(restored.preferences, {});
+  assert.equal(restored.evidence.length, 8);
+  assert.equal(restored.history.length, 0);
+  assert.ok(
+    restored.evidence.every((e) => e.sourceKey.startsWith("saved-fictional-")),
+  );
+  assert.equal(workspace.agents.length, 6);
+  assert.equal(workspace.workProducts[0].versions[0].status, "pending");
 });

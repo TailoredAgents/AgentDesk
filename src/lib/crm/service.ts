@@ -1,4 +1,10 @@
 import { randomUUID } from "node:crypto";
+import {
+  readWorkstyleContext,
+  observe,
+  forgetContext,
+} from "../workstyle/service";
+import { messageSignals } from "../workstyle/engine";
 import { and, desc, eq, gt, inArray, isNull, lt, ne, or } from "drizzle-orm";
 import type { Database } from "../db";
 import { ApiError } from "../auth";
@@ -288,6 +294,19 @@ export class CrmService {
   }
   private async hideLead(tx: Store, c: Connection, leadId: string) {
     await tx
+      .delete(s.messageReviews)
+      .where(
+        and(
+          eq(s.messageReviews.connectionId, c.id),
+          eq(s.messageReviews.leadId, leadId),
+        ),
+      );
+    await forgetContext(
+      tx,
+      { kind: "pilot", memberId: c.memberId, brokerageId: c.brokerageId },
+      `${c.id}:${leadId}`,
+    );
+    await tx
       .update(s.records)
       .set({ status: "unavailable", data: {} })
       .where(
@@ -406,6 +425,18 @@ export class CrmService {
                 ),
               )
           : [];
+      const messageReviews =
+        connection.status === "connected" && work.length
+          ? await tx
+              .select()
+              .from(s.messageReviews)
+              .where(
+                and(
+                  eq(s.messageReviews.connectionId, connection.id),
+                  inArray(s.messageReviews.workId, work.map((draft) => draft.id)),
+                ),
+              )
+          : [];
       return {
         actor: {
           label: actor.label,
@@ -418,7 +449,11 @@ export class CrmService {
         history,
         execution,
         audit,
-        work,
+        work: work.map((draft) => ({
+          ...draft,
+          reviewedMessage:
+            messageReviews.find((review) => review.workId === draft.id) ?? null,
+        })),
         leads: leads.slice(0, 250),
         moreLeads: leads.length > 250,
         team,
@@ -550,6 +585,14 @@ export class CrmService {
   }
   async disconnect(subject: string) {
     return this.locked(subject, async (tx, actor, c) => {
+      await tx
+        .delete(s.messageReviews)
+        .where(eq(s.messageReviews.connectionId, c.id));
+      await forgetContext(tx, {
+        kind: "pilot",
+        memberId: actor.id,
+        brokerageId: actor.brokerageId,
+      });
       await tx
         .update(s.connections)
         .set({
@@ -831,13 +874,23 @@ export class CrmService {
       .from(s.facts)
       .where(and(eq(s.facts.connectionId, c.id), eq(s.facts.leadId, leadId)))
       .orderBy(s.facts.reviewedAt);
-    return buildSharedContext(
+    const context = buildSharedContext(
       rows,
       c.lastAttemptAt,
       c.errorCode,
       Date.now(),
       facts,
     );
+    const workstyle = await readWorkstyleContext(tx, {
+      kind: "pilot",
+      memberId: c.memberId,
+      brokerageId: c.brokerageId,
+    });
+    return {
+      ...context,
+      workstyle,
+      snapshotId: stableHash({ sourceSnapshot: context.snapshotId, workstyle }),
+    };
   }
   async prepare(
     subject: string,
@@ -919,6 +972,74 @@ export class CrmService {
       await this.event(tx, c, actor, "work_prepared", {
         workId: saved.id,
         status: saved.status,
+      });
+      return saved;
+    });
+  }
+  async reviewMessage(subject: string, workId: string, body: string) {
+    const approved = body.trim();
+    if (approved.length < 3 || approved.length > 2500)
+      throw new ApiError(
+        400,
+        "Keep the message between 3 and 2,500 characters.",
+      );
+    return this.locked(subject, async (tx, actor, c) => {
+      const [work] = await tx
+        .select()
+        .from(s.work)
+        .where(
+          and(
+            eq(s.work.id, workId),
+            eq(s.work.connectionId, c.id),
+            eq(s.work.epoch, c.epoch),
+            eq(s.work.status, "ready"),
+          ),
+        );
+      if (!work?.content?.messageDraft) throw denied();
+      const latest = await this.context(tx, c, work.leadId);
+      if (stableHash(latest.sources) !== stableHash(work.snapshot?.sources))
+        throw new ApiError(
+          409,
+          "CRM context changed. Prepare a fresh draft before review.",
+          "context_changed",
+        );
+      const [prior] = await tx
+        .select()
+        .from(s.messageReviews)
+        .where(eq(s.messageReviews.workId, workId));
+      if (prior) {
+        if (prior.body !== approved)
+          throw new ApiError(
+            409,
+            "This draft was already reviewed. Prepare a new work package to change it.",
+          );
+        return prior;
+      }
+      const [saved] = await tx
+        .insert(s.messageReviews)
+        .values({
+          workId,
+          connectionId: c.id,
+          leadId: work.leadId,
+          body: approved,
+          reviewedAt: now(),
+        })
+        .returning();
+      await observe(
+        tx,
+        { kind: "pilot", memberId: actor.id, brokerageId: actor.brokerageId },
+        {
+          sourceKey: `crm-message:${workId}`,
+          contextKey: `${c.id}:${work.leadId}`,
+          workflow: "follow_up",
+          before: work.content.messageDraft,
+          after: approved,
+          signals: messageSignals(work.content.messageDraft, approved),
+        },
+      );
+      await this.event(tx, c, actor, "message_draft_reviewed", {
+        workId,
+        sent: false,
       });
       return saved;
     });

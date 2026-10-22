@@ -30,6 +30,7 @@ export type ProposedAction = {
   change?: ActionChange | null;
 };
 export type Agent = {
+  workstyle?: import("./workstyle/types").WorkstyleContext;
   id: string;
   name: string;
   role: string;
