@@ -1,5 +1,6 @@
 "use client";
 
+import { activeSituationImpacts } from "@/lib/intelligence";
 import { useState } from "react";
 import {
   ArrowUpRight,
@@ -133,6 +134,13 @@ export function Listings({
                   </strong>
                 </div>
                 <Progress done={done} total={tasks.length} />
+                {activeSituationImpacts(data).some(
+                  (i) => i.propertyId === p.id,
+                ) && (
+                  <p className="intelligence-warning small-text">
+                    Updated plans · connected work needs review
+                  </p>
+                )}
                 <div className="listing-next">
                   <span className={`mini-dot ${next ? "amber" : ""}`} />
                   {dependency

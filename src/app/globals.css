@@ -4642,3 +4642,151 @@ button:not(:disabled):active {
   .calendar-fields { grid-template-columns: 1fr; }
   .product-actions .button { flex: 1 1 auto; justify-content: center; }
 }
+
+/* Relationship intelligence extends the existing cards and typography. */
+.client-intelligence {
+  margin: 24px 0;
+}
+.client-intelligence .small-heading {
+  margin: 22px 0 12px;
+}
+.intelligence-fact {
+  border-bottom: 1px solid #e9edf3;
+  padding: 14px 0;
+}
+.intelligence-fact > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.intelligence-fact p,
+.intelligence-change p,
+.intelligence-exceptions p,
+.intelligence-demo p {
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 9px 0;
+  color: #53657b;
+}
+.intelligence-fact small,
+.intelligence-correction small {
+  display: block;
+  color: #7d8b9d;
+  font-size: 11px;
+  line-height: 1.7;
+}
+.intelligence-fact details {
+  margin: 10px 0;
+  font-size: 12px;
+}
+.intelligence-fact summary,
+.intelligence-change summary,
+.intelligence-history > summary,
+.intelligence-demo > summary {
+  cursor: pointer;
+  color: #587ba6;
+  font-size: 12px;
+}
+.intelligence-fact blockquote,
+.intelligence-demo blockquote {
+  border-left: 2px solid #b9cce3;
+  margin: 12px 0;
+  padding-left: 14px;
+  font-size: 12px;
+  line-height: 1.8;
+  color: #687b92;
+}
+.intelligence-change {
+  padding: 16px;
+  background: #f3f7fc;
+  border: 1px solid #e1e9f4;
+  border-radius: 12px;
+  margin-bottom: 14px;
+}
+.intelligence-change strong {
+  font-size: 12px;
+}
+.intelligence-change .eyebrow {
+  margin-bottom: 12px;
+}
+.intelligence-exceptions {
+  background: #fffaf0;
+  border: 1px solid #f0e7d2;
+  border-radius: 14px;
+  padding: 18px 22px;
+  margin: 20px 0;
+}
+.intelligence-exceptions .eyebrow {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+.intelligence-exceptions > .text-link {
+  display: flex;
+  gap: 7px;
+  margin: 8px 0;
+  text-align: left;
+}
+.intelligence-exception {
+  padding: 10px 0;
+  border-top: 1px solid #eee6d5;
+  font-size: 12px;
+}
+.intelligence-warning {
+  color: #9b7135 !important;
+}
+.intelligence-correction {
+  background: #f5f8fc;
+  padding: 18px;
+  border-radius: 12px;
+  margin: 15px 0;
+}
+.intelligence-correction label {
+  display: block;
+  margin: 12px 0;
+  font-size: 12px;
+}
+.intelligence-correction textarea,
+.intelligence-correction select,
+.intelligence-correction input {
+  display: block;
+  width: 100%;
+  border: 1px solid #dce5f0;
+  background: white;
+  border-radius: 7px;
+  padding: 10px;
+  margin-top: 7px;
+  color: #34465e;
+}
+.intelligence-correction textarea {
+  min-height: 90px;
+}
+.intelligence-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 18px 0;
+}
+.intelligence-history {
+  margin: 16px 0;
+}
+.intelligence-history > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.intelligence-demo {
+  padding: 14px;
+  border: 1px solid #dce5f0;
+  border-radius: 10px;
+  margin: 16px 0;
+}
+@media (max-width: 650px) {
+  .intelligence-exceptions {
+    padding: 16px;
+  }
+  .intelligence-fact > div {
+    align-items: start;
+  }
+}

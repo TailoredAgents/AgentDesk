@@ -1,5 +1,27 @@
 # Friday presentation — October 23, 2026, 10 AM Eastern
 
+## New: show a relationship evolving
+
+This connected example works without an API key. It is explicitly saved fictional output, not proof of live model quality.
+
+1. Select Jordan. Open Sarah’s original review and approve the photography task, patio question, and message. Open the saved seller package and **Approve & generate PDF**. This establishes the original Monday cleaning / requested Tuesday photography plan and a retained PDF.
+2. Open Willow Lane, then **Sarah Mitchell → Relationship & situation**. Inspect the explicit text preference, objective, dates, certainty, and **Evidence & history**. The starting facts are labeled as a saved fictional example of reviewed information.
+3. Expand **Connected example · Sarah’s second conversation** and choose **Open saved change review**. Read the new conversation: cleaning confirmed Wednesday, October 28, 2026; Thursday afternoon photography requested, not booked; patio question still unanswered.
+4. Review the before/after cards and expand the connected-record impacts. Choose individual decisions or approve all, then **Confirm review**. This changes current facts only on approval and updates the existing photography task. No appointment is rescheduled or message sent.
+5. Return to the client. Wednesday and requested Thursday are current. **Earlier information** retains the original plans. The patio question remains open. Today, Listings, and Team show the same actual pending work and exceptions.
+6. Open the original seller document. Its warning identifies the affected scheduling section. Choose **Update draft from approved facts**. Version two changes the affected items and preserves the general guidance and open questions. Review and approve the new PDF; use the version selector to show version one is unchanged and still downloadable. Updating from approved facts uses application logic, not a paid model call.
+7. Optionally demonstrate **Correct or retire** on a fact. **Prepare correction** sends a human correction to the existing Review flow. It does not change current memory until approved. Confirmed arrangements are preserved when a new statement is merely requested or disputed; resolve them explicitly through a correction.
+
+For live extraction, submit the second conversation through **New conversation** instead. Use explicit years when entering dated events. The existing model call proposes observations and actions; the server checks quotations and compares them with reviewed facts. Live extraction and writing quality still require authenticated rehearsal with the deployment’s OpenAI key. Do not present the saved example as a live AI result.
+
+A revised approved document clears its operational warning; the historical version keeps its own warning. Existing appointment briefings and commitments can remain flagged until a human checks their recorded plan. This phase does not automatically cancel bookings, send messages, resolve questions, or synchronize a CRM.
+
+## Intelligence scope and retention
+
+Memory currently supports practical real estate objectives, explicit communication/search preferences, cleaning, photography, staging, and listing launch plans. Existing tasks, commitments, appointments, and conversations remain their own sources of truth. Operational comparisons and impact rules are deterministic and deliberately narrow; they do not understand every possible real estate dependency.
+
+Retiring a fact excludes it and its obsolete statements from future context while preserving review evidence. The protected sample reset removes its facts, corrections, generated documents, and review history. There is no separate production retention policy or individual-user authorization in this shared fictional preview. Those are future deployment requirements.
+
 Show one connected workflow: notice an evidenced commitment, prepare a useful seller document, approve it, download the finished PDF, and see the same saved work everywhere. The six people in the workspace are human real estate agents. The five AI Employees are coordinated responsibilities sharing records, not five independent chatbots.
 
 ## Before the meeting

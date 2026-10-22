@@ -1,5 +1,21 @@
 # Validation record
 
+## Relationship & Situation Intelligence — October 22, 2026
+
+The new migration is `0006_relationship_intelligence.sql`. It adds one scoped fact table and metadata on existing review actions; changes, corrections, and decisions reuse the existing package and audit architecture. Production readiness requires both work-product and intelligence migration markers.
+
+Verified during implementation:
+
+- Production build and TypeScript checks pass.
+- Default automated suite: **105 passed, 2 PostgreSQL-only checks skipped**. The separate PostgreSQL 17 domain suite passed **34/34** in a disposable database. These cover extraction evidence, explicit preferences, event dates, confirmed versus requested changes, no-op comparisons, conflict handling, duplicate proposals, current context, scoped impacts, correction/retirement, task updates, source history, and immutable PDF refreshes.
+- Compiled production HTTP checks pass for authenticated saved-change loading, durable retries, explicit fact/task approval, human corrections, and creating a refreshed draft without an AI key. Existing authentication, origin, PDF, calendar, rollback, and sample-reset checks remain enabled.
+- In an isolated production browser workspace, the original seller PDF and conversation actions were approved. The second saved conversation showed before/after facts and connected impacts. Approval changed current facts and the existing task, preserving the patio question. Version two was generated, approved, and downloaded; version one remained accessible and unchanged. A human preference correction was prepared and approved through Review. Team displayed record-based counts.
+- All three pages of the downloaded version-two PDF were rendered and visually inspected. The new dates and requested certainty are readable, and the unchanged guidance and questions remain intact.
+- Desktop and 390 px mobile profiles were visually inspected; the final browser session had no console warnings or errors. Updated approved PDFs clear active operational warnings while their older versions retain history warnings. Screenshots: [Current schedule](screenshots/intelligence-profile-desktop.png), [Mobile profile](screenshots/intelligence-profile-mobile.png).
+- **Live OpenAI extraction/generation is unverified:** no `OPENAI_API_KEY` is configured in this local environment. Tests of saved examples, deterministic logic, provider failure behavior, and structured output validation are not live model evaluations.
+
+The change rules support a bounded set of practical topics. Ambiguous changes are retained as requests or disputed information for human resolution. Appointment/commitment warnings require a human check; this release does not independently change bookings or send messages. Historical notes and PDFs are preserved with warnings, and retired memory is filtered from future provider context. Shared sample access remains a preview, not per-agent authorization.
+
 ## Administrative work products — October 21, 2026
 
 | Check | Result |

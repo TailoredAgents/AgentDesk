@@ -1,4 +1,5 @@
 "use client";
+import { IntelligenceExceptions } from "./intelligence";
 
 import { ArrowUpRight, Users, Check, ShieldCheck } from "lucide-react";
 import type { WorkspaceData } from "@/lib/types";
@@ -66,6 +67,11 @@ export function Team({
           Team preferences
         </button>
       </div>
+      <IntelligenceExceptions
+        data={data}
+        onClient={onClient}
+        onReview={onReview}
+      />
       <div className="team-briefing">
         <AssistantIcon index={4} />
         <div>

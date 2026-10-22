@@ -76,6 +76,14 @@ Record-based follow-up recommendations use open commitments, unresolved question
 
 Today surfaces document versions awaiting review. Client and property records retain linked work products, and Team reports saved approved PDF versions and pending document versions. These are counts of administrative output, not proof of client delivery. PDFs are stored with their approved versions in PostgreSQL rather than Render's ephemeral filesystem.
 
+## Relationship & Situation Intelligence
+
+Client records now hold reviewed, source-linked facts with certainty, event dates, timestamps, and superseded history. New conversation processing proposes practical observations in the same AI call, then deterministic comparison prepares changes in the existing Review flow. A request cannot silently replace a confirmed arrangement. Human corrections and retirement also require an explicit decision.
+
+Scoped impact checks identify connected tasks, appointment briefings, commitments, approved message drafts, and specific document sections that still refer to the earlier plan. Approval can update an existing task without duplicating it. **Update draft from approved facts** refreshes affected document items without an AI call and keeps earlier approved PDFs immutable. Reviewed facts and filtered recent records supply shared context to the five existing roles.
+
+The Sarah / Willow Lane client record has **Connected example · Sarah’s second conversation** for a provider-free rehearsal. Follow [the evolving-relationship demo](docs/DEMO_GUIDE.md). Saved fictional output is labeled; live extraction and writing quality require separate authenticated OpenAI verification. Memory is limited to practical supported topics, not speculative personal profiling. Retiring information removes it from future context while preserving audit history; the guarded sample reset removes sample memory and its history.
+
 ## Configuration
 
 Copy [`.env.example`](.env.example) to `.env`. Never commit credentials or expose them through `NEXT_PUBLIC_` variables.

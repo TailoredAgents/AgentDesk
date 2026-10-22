@@ -1,7 +1,15 @@
+import type { ActionChange, ClientFact } from "./intelligence-types";
 import type { WorkProduct, TaskCalendarSchedule } from "./work-product-types";
 
 export type ActionKind =
-  "summary" | "crm_note" | "message" | "task" | "listing_update" | "question";
+  | "summary"
+  | "crm_note"
+  | "message"
+  | "task"
+  | "listing_update"
+  | "question"
+  | "intelligence"
+  | "task_update";
 export type Decision = "pending" | "approved" | "rejected";
 export type Fact = {
   text: string;
@@ -19,6 +27,7 @@ export type ProposedAction = {
   certainty: "confirmed" | "requested" | "uncertain";
   original?: { title: string; body: string; dueDate: string | null };
   originalAvailable?: boolean;
+  change?: ActionChange | null;
 };
 export type Agent = {
   id: string;
@@ -86,7 +95,7 @@ export type Conversation = {
   propertyId: string | null;
   title: string;
   transcript: string;
-  source: "note" | "audio" | "sample" | "followup";
+  source: "note" | "audio" | "sample" | "followup" | "correction";
   createdAt: string;
 };
 export type WorkPackage = {
@@ -101,7 +110,7 @@ export type WorkPackage = {
   clarifications: string[];
   actions: ProposedAction[];
   status: "pending" | "reviewed";
-  origin: "sample" | "openai";
+  origin: "sample" | "openai" | "human";
   createdAt: string;
   requestId?: string | null;
   recommendationId?: string | null;
@@ -196,6 +205,7 @@ export type WorkspaceData = {
   recommendations: FollowUpRecommendation[];
   reviewHistory: ReviewAudit[];
   workProducts: WorkProduct[];
+  clientFacts?: ClientFact[];
   capabilities: {
     ai: boolean;
     transcription: boolean;

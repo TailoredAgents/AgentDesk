@@ -1,4 +1,5 @@
 "use client";
+import { IntelligenceExceptions } from "./intelligence";
 
 import { useState } from "react";
 import {
@@ -183,6 +184,12 @@ export function Today({
           </div>
         </div>
       </section>
+      <IntelligenceExceptions
+        data={data}
+        agentId={agent.id}
+        onClient={onClient}
+        onReview={onReview}
+      />
       <div className="today-grid">
         <div className="today-primary">
           <WorkProducts

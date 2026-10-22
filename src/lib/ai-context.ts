@@ -1,3 +1,5 @@
+import { currentContextText, currentFacts } from "./intelligence";
+import type { ClientFact } from "./intelligence-types";
 import { ApiError } from "./auth";
 import type { Agent, Client, Property, WorkspaceData } from "./types";
 
@@ -8,7 +10,9 @@ export type AIContext = {
   transcript: string;
   approvedMessages: string[];
   referenceDate?: string;
+  obsoleteFacts?: ClientFact[];
   relationship?: {
+    reviewedIntelligence?: ClientFact[];
     clientNotes: string[];
     propertyNotes: string[];
     tasks: {
@@ -70,11 +74,14 @@ export function buildAIContext(
     item.agentId === agentId &&
     item.clientId === clientId &&
     (!item.propertyId || item.propertyId === propertyId);
+  const memory = (data.clientFacts ?? []).filter(matches);
+  const current = (text: string) => currentContextText(text, memory);
   return {
     agent,
     client,
     property: property ?? null,
     transcript,
+    obsoleteFacts: memory.filter((f) => f.status !== "current"),
     referenceDate: data.workspace.referenceDate,
     approvedMessages: data.packages
       .filter(matches)
@@ -85,20 +92,28 @@ export function buildAIContext(
             (action) =>
               action.kind === "message" && action.status === "approved",
           )
-          .map((action) => action.body),
+          .map((action) => current(action.body))
+          .filter(Boolean),
       )
       .slice(0, 3),
     relationship: {
-      clientNotes: client.notes.slice(-5).map((note) => note.slice(0, 1600)),
+      reviewedIntelligence: currentFacts(data, {
+        agentId,
+        clientId,
+        propertyId,
+      }).slice(0, 24),
+      clientNotes: client.notes
+        .slice(-5)
+        .map((note) => current(note).slice(0, 1600)),
       propertyNotes: (property?.notes ?? [])
         .slice(-4)
-        .map((note) => note.slice(0, 1200)),
+        .map((note) => current(note).slice(0, 1200)),
       tasks: data.tasks
         .filter(matches)
         .slice(-20)
         .map(({ title, detail, status, dueDate }) => ({
-          title,
-          detail: detail.slice(0, 1200),
+          title: current(title) || "Recorded task — earlier wording omitted",
+          detail: current(detail).slice(0, 1200),
           status,
           dueDate,
         })),
@@ -107,29 +122,32 @@ export function buildAIContext(
         .slice(-20)
         .map(({ kind, title, detail, status, dueDate, sourceQuote }) => ({
           kind,
-          title,
-          detail: detail.slice(0, 1200),
+          title:
+            current(title) || "Recorded commitment — earlier wording omitted",
+          detail: current(detail).slice(0, 1200),
           status,
           dueDate,
-          sourceQuote: sourceQuote.slice(0, 1200),
+          sourceQuote: current(sourceQuote).slice(0, 1200),
         })),
       appointments: data.appointments
         .filter(matches)
         .slice(-8)
         .map(({ title, startsAt, status, briefing }) => ({
-          title,
+          title:
+            current(title) || "Recorded appointment — earlier wording omitted",
           startsAt,
           status,
-          briefing: briefing.slice(0, 1000),
+          briefing: current(briefing).slice(0, 1000),
         })),
       conversations: data.conversations
         .filter((item) => matches(item) && item.transcript !== transcript)
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
         .slice(0, 3)
         .map(({ title, createdAt, transcript: previous }) => ({
-          title,
+          title:
+            current(title) || "Recorded conversation — earlier wording omitted",
           createdAt,
-          transcript: previous.slice(0, 2200),
+          transcript: current(previous).slice(0, 2200),
         })),
     },
   };
@@ -140,7 +158,13 @@ export function buildProviderContext(context: AIContext) {
   return {
     agent: {
       name: context.agent.name,
-      communicationStyle: context.agent.style,
+      communicationStyle: {
+        ...context.agent.style,
+        examples: currentContextText(
+          context.agent.style.examples,
+          context.obsoleteFacts ?? [],
+        ),
+      },
     },
     client: { name: context.client.name, relationship: context.client.type },
     property: context.property

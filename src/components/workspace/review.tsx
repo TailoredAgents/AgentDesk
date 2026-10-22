@@ -23,6 +23,7 @@ import type {
 import { AssistantIcon, Badge, Empty, shortDate } from "../ui";
 import { request } from "./client-api";
 import { reviewEffect, selectedReviewDecisions } from "./review-helpers";
+import { ChangePreview } from "./intelligence";
 import { WorkProducts } from "./work-products";
 import { MessageActions } from "./message-actions";
 
@@ -234,7 +235,11 @@ export function Review({
                 <AudioLines size={17} />
                 THE CONVERSATION
                 <Badge>
-                  {pkg.origin === "sample" ? "Saved sample" : "Live AI result"}
+                  {pkg.origin === "sample"
+                    ? "Saved sample"
+                    : pkg.origin === "human"
+                      ? "Human correction"
+                      : "Live AI result"}
                 </Badge>
               </div>
               <div className="source-title">
@@ -383,6 +388,7 @@ export function Review({
                         )}
                       </div>
                       <h3>{a.title}</h3>
+                      <ChangePreview data={data} action={a} pkg={pkg} />
                       {a.status === "pending" ? (
                         <textarea
                           aria-label={`Edit ${a.title}`}
@@ -445,12 +451,17 @@ export function Review({
                           )}
                         </>
                       )}
-                      {a.kind === "task" && a.status === "pending" ? (
+                      {(a.kind === "task" ||
+                        a.kind === "task_update" ||
+                        a.kind === "intelligence") &&
+                      a.status === "pending" ? (
                         <label className="action-date">
                           <CalendarDays size={13} />
-                          Due date
+                          {a.kind === "intelligence"
+                            ? "Effective date"
+                            : "Due date"}
                           <input
-                            aria-label={`Due date for ${a.title}`}
+                            aria-label={`${a.kind === "intelligence" ? "Effective date" : "Due date"} for ${a.title}`}
                             type="date"
                             value={dates[a.id] ?? a.dueDate ?? ""}
                             disabled={locked}

@@ -38,6 +38,17 @@ import {
 } from "../src/lib/work-product-content";
 import { renderWorkProductPdf } from "../src/lib/work-product-pdf";
 import { confirmedTaskSchedule } from "../src/lib/calendar";
+import {
+  situationSampleObservations,
+  situationSampleTranscript,
+} from "../src/lib/intelligence-sample";
+import {
+  activeSituationImpacts,
+  proposalImpacts,
+  situationImpacts,
+} from "../src/lib/intelligence";
+import { refreshWorkProduct } from "../src/lib/work-product-content";
+import { proposeFactCorrection } from "../src/lib/repository";
 import type {
   WorkProduct,
   WorkProductVersion,
@@ -1277,7 +1288,8 @@ test("document history follows revisions and lifecycle despite reversed audit ti
   const created = await createWorkProductDraft(input);
   const edited = {
     ...input.content,
-    introduction: "Sarah, please review this guide and its open questions with Jordan.",
+    introduction:
+      "Sarah, please review this guide and its open questions with Jordan.",
   };
   await editWorkProductVersion(created.productId, created.versionId, {
     content: edited,
@@ -1289,12 +1301,15 @@ test("document history follows revisions and lifecycle despite reversed audit ti
     expectedEditRevision: 1,
   });
   const { db } = await getDatabase();
-  await db.update(tables.workProductAudits).set({
-    createdAt: sql`(CASE ${tables.workProductAudits.event}
+  await db
+    .update(tables.workProductAudits)
+    .set({
+      createdAt: sql`(CASE ${tables.workProductAudits.event}
       WHEN 'created' THEN '2099-01-03T00:00:00.000Z'
       WHEN 'edited' THEN '2099-01-02T00:00:00.000Z'
       ELSE '2099-01-01T00:00:00.000Z' END)::timestamptz`,
-  }).where(eq(tables.workProductAudits.versionId, created.versionId));
+    })
+    .where(eq(tables.workProductAudits.versionId, created.versionId));
   const version = (await getWorkspace()).workProducts.find(
     (item) => item.id === created.productId,
   )!.versions[0];
@@ -1427,32 +1442,63 @@ test("PDF approval is atomic, durable, idempotent, and immutable across new vers
 test("manual document copies retain historical citations after source records change; regeneration requires fresh evidence", async () => {
   await updateTask("task-willow-staging", "open");
   const input = await sellerDraft();
-  const taskSource = input.snapshot.sources.find((source) => source.id === "task:task-willow-staging")!;
+  const taskSource = input.snapshot.sources.find(
+    (source) => source.id === "task:task-willow-staging",
+  )!;
   assert.match(taskSource.text, /Status: open/);
-  input.content.sections.find((section) => section.kind === "next_steps")!.items.push({
-    text: "Review staging recommendations before preparing the checklist.", certainty: "requested", sourceId: taskSource.id, sourceQuote: taskSource.text,
-  });
+  input.content.sections
+    .find((section) => section.kind === "next_steps")!
+    .items.push({
+      text: "Review staging recommendations before preparing the checklist.",
+      certainty: "requested",
+      sourceId: taskSource.id,
+      sourceQuote: taskSource.text,
+    });
   const created = await createWorkProductDraft(input);
-  const original = created.workspace.workProducts.find((product) => product.id === created.productId)!.versions[0];
+  const original = created.workspace.workProducts.find(
+    (product) => product.id === created.productId,
+  )!.versions[0];
   const changed = await updateTask("task-willow-staging", "done");
   const fresh = buildWorkProductSnapshot(changed, sellerLinks);
-  assert.equal(fresh.sources.find((source) => source.id === taskSource.id)!.text.includes(taskSource.text), false);
+  assert.equal(
+    fresh.sources
+      .find((source) => source.id === taskSource.id)!
+      .text.includes(taskSource.text),
+    false,
+  );
   const copiedInput = await sellerDraft({
-    productId: created.productId, copyVersionId: original.id, content: original.content, snapshot: original.snapshot,
+    productId: created.productId,
+    copyVersionId: original.id,
+    content: original.content,
+    snapshot: original.snapshot,
   });
   const copied = await createWorkProductDraft(copiedInput);
-  const version = copied.workspace.workProducts.find((product) => product.id === created.productId)!.versions[0];
+  const version = copied.workspace.workProducts.find(
+    (product) => product.id === created.productId,
+  )!.versions[0];
   assert.deepEqual(version.snapshot, original.snapshot);
   assert.deepEqual(version.content, original.content);
   assert.match(version.history[0].actor, /copied retained version/);
   assert.equal(version.status, "pending");
   const currentRevision = copied.workspace.workspace.revision!;
-  await assert.rejects(createWorkProductDraft({
-    ...copiedInput, requestId: randomUUID(), snapshot: fresh, expectedWorkspaceRevision: currentRevision,
-  }), domainError("STALE_SOURCE"));
-  await assert.rejects(createWorkProductDraft({
-    ...copiedInput, requestId: randomUUID(), copyVersionId: undefined, expectedWorkspaceRevision: currentRevision,
-  }), domainError("STALE_SOURCE"));
+  await assert.rejects(
+    createWorkProductDraft({
+      ...copiedInput,
+      requestId: randomUUID(),
+      snapshot: fresh,
+      expectedWorkspaceRevision: currentRevision,
+    }),
+    domainError("STALE_SOURCE"),
+  );
+  await assert.rejects(
+    createWorkProductDraft({
+      ...copiedInput,
+      requestId: randomUUID(),
+      copyVersionId: undefined,
+      expectedWorkspaceRevision: currentRevision,
+    }),
+    domainError("STALE_SOURCE"),
+  );
   assert.equal((await getWorkspace()).workspace.revision, currentRevision);
 });
 
@@ -1615,10 +1661,28 @@ test("calendar schedules require complete confirmed instants and remain scoped, 
   assert.equal(retry.workspace.revision, saved.workspace.revision);
   // A real HTTP retry builds fresh confirmation metadata even when its effective
   // schedule and original optimistic revision are unchanged.
-  const routeRetry = confirmedTaskSchedule({ date: "2026-10-26", startTime: "11:00", endTime: "11:30", timeZone: "America/New_York", confirmed: true, expectedWorkspaceRevision: state.workspace.revision! }, "2026-10-22T15:00:00Z");
-  const retriedFromRoute = await setTaskCalendar("task-willow-disclosure", routeRetry, state.workspace.revision);
+  const routeRetry = confirmedTaskSchedule(
+    {
+      date: "2026-10-26",
+      startTime: "11:00",
+      endTime: "11:30",
+      timeZone: "America/New_York",
+      confirmed: true,
+      expectedWorkspaceRevision: state.workspace.revision!,
+    },
+    "2026-10-22T15:00:00Z",
+  );
+  const retriedFromRoute = await setTaskCalendar(
+    "task-willow-disclosure",
+    routeRetry,
+    state.workspace.revision,
+  );
   assert.equal(retriedFromRoute.workspace.revision, saved.workspace.revision);
-  assert.deepEqual(retriedFromRoute.tasks.find((task) => task.id === "task-willow-disclosure")!.calendarSchedule, schedule);
+  assert.deepEqual(
+    retriedFromRoute.tasks.find((task) => task.id === "task-willow-disclosure")!
+      .calendarSchedule,
+    schedule,
+  );
   assert.deepEqual(retriedFromRoute.activities, saved.activities);
   await assert.rejects(
     setTaskCalendar(
@@ -1743,4 +1807,359 @@ test("readiness fails within its deadline when PostgreSQL accepts TCP but never 
     for (const socket of sockets) socket.destroy();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
+});
+
+test("connected situation approval updates facts and one task, preserves questions and PDF, and refreshes only affected content", async () => {
+  let state = await resetSampleWorkspace(SAMPLE_RESET_CONFIRMATION);
+  const first = state.packages.find((p) => p.id === "package-sarah")!;
+  state = await reviewPackage(first.id, {
+    decisions: first.actions
+      .filter((a) =>
+        [
+          "sarah-photographer",
+          "sarah-patio-question",
+          "sarah-message",
+        ].includes(a.id),
+      )
+      .map((a) => ({ id: a.id, body: a.body, status: "approved" as const })),
+  });
+  const task = state.tasks.find(
+    (t) => t.sourceActionId === "sarah-photographer",
+  )!;
+  const product = state.workProducts[0],
+    version = product.versions[0];
+  const pdf = await pdfFor(product, version);
+  state = await reviewWorkProductVersion(product.id, version.id, {
+    decision: "approved",
+    expectedEditRevision: 0,
+    ...pdf,
+  });
+  const before = structuredClone(state);
+  const input = {
+    ...conversationInput,
+    title: "Second seller conversation",
+    transcript: situationSampleTranscript,
+    requestId: randomUUID(),
+  };
+  const generatedUpdate = {
+    ...generated(["message"]),
+    observations: situationSampleObservations,
+  };
+  const prepared = await createConversationPackage(input, generatedUpdate);
+  const retry = await createConversationPackage(input, generatedUpdate);
+  assert.equal(retry.package.id, prepared.package.id);
+  assert.equal(
+    prepared.package.actions.filter((a) => a.kind === "intelligence").length,
+    2,
+  );
+  const taskUpdate = prepared.package.actions.find(
+    (a) => a.kind === "task_update",
+  )!;
+  assert.equal(
+    taskUpdate.change?.type === "task" && taskUpdate.change.targetId,
+    task.id,
+  );
+  assert.ok(
+    prepared.package.actions.some((a) =>
+      proposalImpacts(before, a, prepared.package).some(
+        (i) => i.versionId === version.id,
+      ),
+    ),
+  );
+  assert.deepEqual(
+    (await getWorkspace()).clientFacts,
+    before.clientFacts,
+    "Extraction alone cannot change reviewed memory.",
+  );
+  const decisions = prepared.package.actions
+    .filter((a) => a.kind !== "message")
+    .map((a) => ({ id: a.id, body: a.body, status: "approved" as const }));
+  state = await reviewPackage(prepared.package.id, { decisions });
+  const retried = await reviewPackage(prepared.package.id, { decisions });
+  assert.deepEqual(retried, state);
+  assert.equal(
+    state.clientFacts!.find(
+      (f) => f.topic === "cleaning" && f.status === "current",
+    )!.effectiveDate,
+    "2026-10-28",
+  );
+  assert.equal(
+    state.clientFacts!.find(
+      (f) => f.topic === "photography" && f.status === "current",
+    )!.certainty,
+    "requested",
+  );
+  assert.equal(
+    state.clientFacts!.filter((f) => f.status === "superseded").length,
+    2,
+  );
+  assert.equal(state.tasks.length, before.tasks.length);
+  assert.match(state.tasks.find((t) => t.id === task.id)!.detail, /October 29/);
+  assert.deepEqual(state.appointments, before.appointments);
+  assert.deepEqual(
+    state.commitments,
+    before.commitments,
+    "The patio question stays open.",
+  );
+  const impacts = situationImpacts(state);
+  assert.ok(
+    impacts.some((i) => i.kind === "document" && i.versionId === version.id),
+  );
+  assert.ok(
+    impacts.some((i) => i.kind === "message" && i.targetId === "sarah-message"),
+  );
+  assert.equal(
+    impacts.some((i) => i.targetId === "task-willow-disclosure"),
+    false,
+  );
+  assert.equal(
+    (await getWorkProductPdf(product.id, version.id)).pdfSha256,
+    pdf.pdfSha256,
+  );
+  const currentProduct = state.workProducts.find((p) => p.id === product.id)!;
+  const refreshed = refreshWorkProduct(
+    state,
+    currentProduct,
+    currentProduct.versions[0],
+  );
+  assert.match(JSON.stringify(refreshed.content), /October 28/);
+  assert.match(JSON.stringify(refreshed.content), /October 29/);
+  assert.doesNotMatch(
+    JSON.stringify(
+      refreshed.content.sections.map((s) => s.items.map((i) => i.text)),
+    ),
+    /Monday|Tuesday/,
+  );
+  assert.deepEqual(
+    refreshed.content.sections.find((s) => s.kind === "general_guidance"),
+    version.content.sections.find((s) => s.kind === "general_guidance"),
+  );
+  const created = await createWorkProductDraft({
+    ...sellerLinks,
+    ...refreshed,
+    productId: product.id,
+    copyVersionId: version.id,
+    refreshFromCurrent: true,
+    origin: "sample",
+    requestId: randomUUID(),
+    requestFingerprint: "b".repeat(64),
+    expectedWorkspaceRevision: state.workspace.revision!,
+  });
+  assert.equal(
+    created.workspace.workProducts.find((p) => p.id === product.id)!.versions[0]
+      .status,
+    "pending",
+  );
+  assert.equal(
+    (await getWorkProductPdf(product.id, version.id)).pdfSha256,
+    pdf.pdfSha256,
+  );
+  const latestProduct = created.workspace.workProducts.find(
+    (p) => p.id === product.id,
+  )!;
+  const latestVersion = latestProduct.versions.find(
+    (v) => v.id === created.versionId,
+  )!;
+  const refreshedApproved = await reviewWorkProductVersion(
+    product.id,
+    latestVersion.id,
+    {
+      decision: "approved",
+      expectedEditRevision: latestVersion.editRevision,
+      ...(await pdfFor(latestProduct, latestVersion)),
+    },
+  );
+  assert.equal(
+    activeSituationImpacts(refreshedApproved).some(
+      (i) => i.kind === "document",
+    ),
+    false,
+    "An approved replacement clears the operational queue.",
+  );
+  assert.equal(
+    situationImpacts(refreshedApproved).some((i) => i.versionId === version.id),
+    true,
+    "The original still carries its historical warning.",
+  );
+  const same = await createConversationPackage(
+    { ...input, requestId: randomUUID() },
+    generatedUpdate,
+  );
+  assert.equal(
+    same.package.actions.some(
+      (a) => a.kind === "intelligence" || a.kind === "task_update",
+    ),
+    false,
+  );
+  await assert.rejects(
+    proposeFactCorrection(
+      state.clientFacts![0].id,
+      {
+        requestId: randomUUID(),
+        value: "Correction",
+        certainty: "confirmed",
+        effectiveDate: null,
+        retire: false,
+      },
+      { workspaceId: "second-tenant" },
+    ),
+    domainError("NOT_FOUND"),
+  );
+});
+
+test("human corrections are reviewable, stale concurrent corrections fail, retirement excludes memory and reset restores baseline", async () => {
+  let state = await resetSampleWorkspace(SAMPLE_RESET_CONFIRMATION);
+  const fact = state.clientFacts!.find((f) => f.topic === "communication")!;
+  const input = {
+    requestId: randomUUID(),
+    value: "Sarah prefers brief email updates.",
+    certainty: "confirmed",
+    effectiveDate: null,
+    retire: false,
+  };
+  const packageId = await proposeFactCorrection(fact.id, input);
+  assert.equal(await proposeFactCorrection(fact.id, input), packageId);
+  const concurrent = await proposeFactCorrection(fact.id, {
+    ...input,
+    requestId: randomUUID(),
+    value: "Sarah prefers phone calls.",
+  });
+  const pkg = (await getWorkspace()).packages.find((p) => p.id === packageId)!;
+  assert.equal(pkg.origin, "human");
+  state = await reviewPackage(packageId, {
+    decisions: pkg.actions.map((a) => ({
+      id: a.id,
+      body: a.body,
+      status: "approved",
+    })),
+  });
+  const updated = state.clientFacts!.find(
+    (f) => f.topic === "communication" && f.status === "current",
+  )!;
+  assert.equal(updated.value, input.value);
+  assert.equal(updated.humanEdited, true);
+  assert.equal(
+    state.clientFacts!.find((f) => f.id === fact.id)!.value,
+    fact.value,
+  );
+  assert.ok(state.reviewHistory.some((r) => r.packageId === packageId));
+  const stale = state.packages.find((p) => p.id === concurrent)!;
+  await assert.rejects(
+    reviewPackage(concurrent, {
+      decisions: stale.actions.map((a) => ({
+        id: a.id,
+        body: a.body,
+        status: "approved",
+      })),
+    }),
+    domainError("STALE_INTELLIGENCE"),
+  );
+  await reviewPackage(concurrent, {
+    decisions: stale.actions.map((a) => ({
+      id: a.id,
+      body: a.body,
+      status: "rejected",
+    })),
+  });
+  const retirement = await proposeFactCorrection(updated.id, {
+    ...input,
+    requestId: randomUUID(),
+    retire: true,
+  });
+  const retirePkg = (await getWorkspace()).packages.find(
+    (p) => p.id === retirement,
+  )!;
+  state = await reviewPackage(retirement, {
+    decisions: retirePkg.actions.map((a) => ({
+      id: a.id,
+      body: a.body,
+      status: "approved",
+    })),
+  });
+  assert.equal(
+    state.clientFacts!.some(
+      (f) => f.topic === "communication" && f.status === "current",
+    ),
+    false,
+  );
+  assert.ok(state.clientFacts!.some((f) => f.status === "retired"));
+  const restored = await resetSampleWorkspace(SAMPLE_RESET_CONFIRMATION);
+  assert.equal(restored.clientFacts!.length, 4);
+  assert.ok(restored.clientFacts!.every((f) => f.status === "current"));
+  assert.equal(restored.reviewHistory.length, 0);
+});
+
+test("approving a requested change retains the confirmed arrangement until a human resolves the competing statements", async () => {
+  const start = await resetSampleWorkspace(SAMPLE_RESET_CONFIRMATION);
+  const quote =
+    "Sarah would prefer cleaning on Thursday, October 29, 2026, instead.";
+  const observation = {
+    topic: "cleaning" as const,
+    value: quote,
+    sourceQuote: quote,
+    certainty: "requested" as const,
+    effectiveDate: "2026-10-29",
+    intent: "replacement" as const,
+  };
+  const prepared = await createConversationPackage(
+    { ...conversationInput, transcript: quote, requestId: randomUUID() },
+    { ...generated(["summary"]), observations: [observation] },
+  );
+  const action = prepared.package.actions.find(
+    (a) => a.kind === "intelligence",
+  )!;
+  assert.equal(
+    action.change?.type === "fact" && action.change.disposition,
+    "request",
+  );
+  let state = await reviewPackage(prepared.package.id, {
+    decisions: [{ id: action.id, body: action.body, status: "approved" }],
+  });
+  const current = state.clientFacts!.filter(
+    (f) => f.topic === "cleaning" && f.status === "current",
+  );
+  assert.equal(current.length, 2);
+  assert.ok(
+    current.some(
+      (f) => f.certainty === "confirmed" && f.effectiveDate === "2026-10-26",
+    ),
+  );
+  assert.ok(
+    current.some(
+      (f) => f.certainty === "requested" && f.effectiveDate === "2026-10-29",
+    ),
+  );
+  assert.deepEqual(state.tasks, start.tasks);
+  assert.deepEqual(state.appointments, start.appointments);
+  const correction = await proposeFactCorrection(current[0].id, {
+    requestId: randomUUID(),
+    value:
+      "The cleaner confirmed Thursday, October 29, 2026; the Monday booking is replaced.",
+    certainty: "confirmed",
+    effectiveDate: "2026-10-29",
+    retire: false,
+  });
+  const correctionPackage = (await getWorkspace()).packages.find(
+    (p) => p.id === correction,
+  )!;
+  state = await reviewPackage(correction, {
+    decisions: correctionPackage.actions.map((a) => ({
+      id: a.id,
+      body: a.body,
+      status: "approved",
+    })),
+  });
+  assert.equal(
+    state.clientFacts!.filter(
+      (f) => f.topic === "cleaning" && f.status === "current",
+    ).length,
+    1,
+  );
+  assert.equal(
+    state.clientFacts!.filter(
+      (f) => f.topic === "cleaning" && f.status === "superseded",
+    ).length,
+    2,
+  );
+  await resetSampleWorkspace(SAMPLE_RESET_CONFIRMATION);
 });

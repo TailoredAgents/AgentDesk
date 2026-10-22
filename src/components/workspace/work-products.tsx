@@ -1,4 +1,5 @@
 "use client";
+import { situationImpacts } from "@/lib/intelligence";
 import { useRef, useState } from "react";
 import {
   FileText,
@@ -89,7 +90,11 @@ export function WorkProducts({
     selectedProduct?.versions.find(
       (version) => version.id === selectedVersion,
     ) || (selectedProduct ? newest(selectedProduct) : undefined);
-  const generate = async (product?: WorkProduct, copyVersionId?: string) => {
+  const generate = async (
+    product?: WorkProduct,
+    copyVersionId?: string,
+    refreshFromCurrent?: boolean,
+  ) => {
     if (submitting.current || (!context && !product)) return;
     submitting.current = true;
     setBusy(true);
@@ -99,6 +104,7 @@ export function WorkProducts({
           agentId: product.agentId,
           productId: product.id,
           ...(copyVersionId ? { copyVersionId } : {}),
+          ...(refreshFromCurrent ? { refreshFromCurrent: true } : {}),
         }
       : context!;
     // Unrelated workspace changes must not turn a retry of the same work into
@@ -187,6 +193,13 @@ export function WorkProducts({
                   data.agents.find((agent) => agent.id === product.agentId)
                     ?.name}
               </small>
+              {situationImpacts(data).some(
+                (i) => i.versionId === display.id,
+              ) && (
+                <small className="intelligence-warning">
+                  Contains information to review after a change
+                </small>
+              )}
               {display.origin === "sample" && (
                 <small>Saved sample output</small>
               )}
@@ -244,7 +257,9 @@ export function WorkProducts({
           onUpdate={onUpdate}
           notify={notify}
           generating={busy}
-          onGenerate={(copyId) => generate(selectedProduct, copyId)}
+          onGenerate={(copyId, refresh) =>
+            generate(selectedProduct, copyId, refresh)
+          }
         />
       )}
     </section>
@@ -270,7 +285,7 @@ function WorkProductEditor({
   onUpdate: (data: WorkspaceData) => void;
   notify: (message: string) => void;
   generating: boolean;
-  onGenerate: (copyVersionId?: string) => void;
+  onGenerate: (copyVersionId?: string, refreshFromCurrent?: boolean) => void;
 }) {
   const [content, setContent] = useState<WorkProductContent>(() =>
     structuredClone(version.content),
@@ -357,6 +372,29 @@ function WorkProductEditor({
       }}
     >
       <div className="work-product-editor">
+        {situationImpacts(data).some((i) => i.versionId === version.id) && (
+          <div className="intelligence-exceptions">
+            <strong>This version contains previous information</strong>
+            {situationImpacts(data)
+              .filter((i) => i.versionId === version.id)
+              .map((i) => (
+                <p key={i.id}>{i.detail}</p>
+              ))}
+            <button
+              className="button secondary"
+              disabled={locked || dirty}
+              onClick={() => onGenerate(version.id, true)}
+            >
+              Update draft from approved facts
+            </button>
+            <p className="small-text">
+              Replaces affected items, retains the other sections, and creates a
+              new draft for review. No AI call is needed. Earlier PDFs remain
+              unchanged.
+            </p>
+          </div>
+        )}
+
         <div className="product-version-toolbar">
           <label>
             Version

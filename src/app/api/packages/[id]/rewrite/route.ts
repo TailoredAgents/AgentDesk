@@ -1,3 +1,4 @@
+import { currentContextText } from "@/lib/intelligence";
 import { z } from "zod";
 import { ApiError, limitAI, protectedRoute, readJson } from "@/lib/auth";
 import { rewriteMessage } from "@/lib/ai";
@@ -50,6 +51,19 @@ export async function POST(
           404,
           "The source conversation is unavailable.",
           "not_found",
+        );
+      const memory = (workspace.clientFacts ?? []).filter(
+        (f) =>
+          f.agentId === workPackage.agentId &&
+          f.clientId === workPackage.clientId &&
+          (!f.propertyId || f.propertyId === workPackage.propertyId),
+      );
+      const proposedText = input.text ?? action.body;
+      if (currentContextText(proposedText, memory) !== proposedText)
+        throw new ApiError(
+          409,
+          "This draft uses superseded information. Prepare an updated follow-up from the client's current situation before polishing its wording.",
+          "outdated_draft",
         );
       return rewriteMessage(
         buildAIContext(

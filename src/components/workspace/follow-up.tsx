@@ -1,5 +1,6 @@
 "use client";
 
+import { currentContextText, currentFacts } from "@/lib/intelligence";
 import type { FollowUpRecommendation, WorkspaceData } from "@/lib/types";
 import { Badge, Modal, SectionTitle, shortDate, TextLink } from "../ui";
 
@@ -27,6 +28,12 @@ export function FollowUp({
   const property = data.properties.find(
     (value) => value.id === item.propertyId,
   );
+  const memory = (data.clientFacts ?? []).filter(
+    (f) =>
+      f.agentId === item.agentId &&
+      f.clientId === item.clientId &&
+      (!f.propertyId || f.propertyId === item.propertyId),
+  );
   return (
     <Modal
       title={`${client.name} — ${item.title}`}
@@ -51,6 +58,11 @@ export function FollowUp({
         <SectionTitle title="The evidence behind the recommendation" />
         {item.evidence.map((evidence, index) => (
           <p className="saved-note" key={index}>
+            {currentContextText(evidence, memory) !== evidence && (
+              <Badge tone="amber">
+                Includes an earlier plan · see reviewed context below
+              </Badge>
+            )}
             {evidence}
           </p>
         ))}
@@ -67,9 +79,20 @@ export function FollowUp({
         <SectionTitle title="Context that shapes the message" />
         <p className="saved-note">
           {client.notes.length
-            ? client.notes.join(" ")
+            ? client.notes
+                .map((note) => currentContextText(note, memory))
+                .filter(Boolean)
+                .join(" ")
             : "No additional client preferences are recorded."}
         </p>
+        {currentFacts(data, item).map((f) => (
+          <p className="saved-note" key={f.id}>
+            <Badge tone={f.certainty === "confirmed" ? "green" : "amber"}>
+              {f.certainty}
+            </Badge>{" "}
+            {f.value}
+          </p>
+        ))}
         <TextLink onClick={() => onClient(client.id)}>
           Open client record & commitments
         </TextLink>
@@ -86,6 +109,16 @@ export function FollowUp({
                 : "AI-prepared draft"}
             </Badge>
             <h3>{pkg.title}</h3>
+            {pkg.actions.some(
+              (a) =>
+                a.kind === "message" &&
+                currentContextText(a.body, memory) !== a.body,
+            ) && (
+              <p className="intelligence-warning">
+                This saved draft contains an earlier plan. Open the client’s
+                situation and updated change review before using it.
+              </p>
+            )}
             <p>
               {pkg.actions.find((action) => action.kind === "message")?.body ||
                 pkg.summary}

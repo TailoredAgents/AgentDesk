@@ -2,6 +2,12 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import dotenv from "dotenv";
 import OpenAI from "openai";
+import {
+  sampleIntelligenceFacts,
+  situationSampleTranscript,
+} from "../src/lib/intelligence-sample";
+import { prepareIntelligenceActions } from "../src/lib/intelligence";
+import { randomUUID } from "node:crypto";
 import { buildAIContext } from "../src/lib/ai-context";
 import {
   generateFollowUpPackage,
@@ -193,6 +199,74 @@ async function main() {
     seller.propertyId,
     seller.transcript,
   );
+  await runCase("intelligence:connected-seller-change", async (check) => {
+    const evolving = structuredClone(data);
+    evolving.clientFacts = sampleIntelligenceFacts().map((f) => ({
+      ...f,
+      agentId: seller.agentId,
+      clientId: seller.clientId,
+      propertyId: f.propertyId ? seller.propertyId : null,
+    }));
+    const transcript =
+      situationSampleTranscript +
+      " Sarah said she now prefers short email updates instead of texts.";
+    const generated = await generateWorkPackage(
+      buildAIContext(
+        evolving,
+        seller.agentId,
+        seller.clientId,
+        seller.propertyId,
+        transcript,
+      ),
+    );
+    const observations = generated.observations ?? [];
+    check(
+      "Confirmed cleaning reschedule is extracted with its explicit date",
+      observations.some(
+        (o) =>
+          o.topic === "cleaning" &&
+          o.certainty === "confirmed" &&
+          o.effectiveDate === "2026-10-28",
+      ),
+    );
+    check(
+      "Thursday photography remains requested",
+      observations.some(
+        (o) =>
+          o.topic === "photography" &&
+          o.certainty === "requested" &&
+          o.effectiveDate === "2026-10-29",
+      ),
+    );
+    check(
+      "Explicit email preference is extracted without psychological inference",
+      observations.some(
+        (o) => o.topic === "communication" && /email/i.test(o.value),
+      ),
+    );
+    const actions = prepareIntelligenceActions(
+      evolving,
+      seller,
+      observations,
+      randomUUID,
+    );
+    check(
+      "Deterministic comparison prepares a replacement of the old cleaning plan",
+      actions.some(
+        (a) =>
+          a.change?.type === "fact" &&
+          a.change.observation.topic === "cleaning" &&
+          a.change.disposition === "replace",
+      ),
+    );
+    check(
+      "Draft does not claim Thursday photography is booked",
+      !/photos?.{0,35}(?:are|is) (?:confirmed|booked)|(?:confirmed|booked).{0,25}(?:Thursday|October 29)/i.test(
+        messageOf(generated),
+      ),
+    );
+    return { generated, proposedChanges: actions };
+  });
   for (const scenario of aiEvaluationScenarios) {
     const result = await runCase(`package:${scenario.id}`, async (check) => {
       const generated = await generateWorkPackage(
@@ -273,7 +347,16 @@ async function main() {
           "The unresolved patio question is preserved",
           /patio/i.test(allText + generated.clarifications.join(" ")),
         );
-        check("The patio question becomes an explicit proposal for approval", generated.actions.some((action) => action.kind === "question" && /patio/i.test(`${action.title} ${action.body}`) && action.certainty === "uncertain" && action.dueDate === null));
+        check(
+          "The patio question becomes an explicit proposal for approval",
+          generated.actions.some(
+            (action) =>
+              action.kind === "question" &&
+              /patio/i.test(`${action.title} ${action.body}`) &&
+              action.certainty === "uncertain" &&
+              action.dueDate === null,
+          ),
+        );
         check(
           "Warm profile greeting is reflected",
           /^Hey\s*,?\s+Sarah\b/i.test(message.trim()),
@@ -445,23 +528,115 @@ async function main() {
   });
 
   // These records are created only in memory for evaluation, never in the application database.
-  data.conversations.push({ id: "eval-source-conversation", agentId: seller.agentId, clientId: seller.clientId, propertyId: seller.propertyId, title: "Fictional seller preparation source", transcript: seller.transcript, source: "note", createdAt: "2026-10-23T12:00:00Z" });
-  data.appointments.push({ id: "eval-appointment", agentId: seller.agentId, clientId: seller.clientId, propertyId: seller.propertyId, title: "Seller preparation review call", startsAt: "2026-10-23T14:00:00Z", endsAt: "2026-10-23T14:30:00Z", location: "Phone", status: "confirmed", briefing: "Discuss the preparation checklist and the unresolved patio furniture question. Photography remains unconfirmed." });
+  data.conversations.push({
+    id: "eval-source-conversation",
+    agentId: seller.agentId,
+    clientId: seller.clientId,
+    propertyId: seller.propertyId,
+    title: "Fictional seller preparation source",
+    transcript: seller.transcript,
+    source: "note",
+    createdAt: "2026-10-23T12:00:00Z",
+  });
+  data.appointments.push({
+    id: "eval-appointment",
+    agentId: seller.agentId,
+    clientId: seller.clientId,
+    propertyId: seller.propertyId,
+    title: "Seller preparation review call",
+    startsAt: "2026-10-23T14:00:00Z",
+    endsAt: "2026-10-23T14:30:00Z",
+    location: "Phone",
+    status: "confirmed",
+    briefing:
+      "Discuss the preparation checklist and the unresolved patio furniture question. Photography remains unconfirmed.",
+  });
   for (const kind of ["seller_preparation", "appointment_briefing"] as const) {
     await runCase(`work-product:${kind}`, async (check) => {
-      const context = buildWorkProductContext(data, { kind, agentId: seller.agentId, clientId: seller.clientId, propertyId: seller.propertyId, sourceConversationId: "eval-source-conversation", ...(kind === "appointment_briefing" ? { appointmentId: "eval-appointment" } : {}) });
+      const context = buildWorkProductContext(data, {
+        kind,
+        agentId: seller.agentId,
+        clientId: seller.clientId,
+        propertyId: seller.propertyId,
+        sourceConversationId: "eval-source-conversation",
+        ...(kind === "appointment_briefing"
+          ? { appointmentId: "eval-appointment" }
+          : {}),
+      });
       const content = await generateWorkProduct(context);
       const items = content.sections.flatMap((section) => section.items);
-      check("Every recorded item retains exact source evidence", items.filter((item) => item.certainty !== "general").every((item) => context.snapshot.sources.some((source) => source.id === item.sourceId && source.text.includes(item.sourceQuote ?? "MISSING"))));
-      check("General suggestions are separated from recorded client agreements", content.sections.some((section) => section.kind === "general_guidance") && items.filter((item) => item.certainty === "general").every((item) => item.sourceId === null && item.sourceQuote === null));
-      check("Photographer uncertainty remains visible", items.some((item) => /photo/i.test(item.text) && item.certainty !== "confirmed" && /confirm|request|uncertain|availability|await/i.test(item.text)));
-      check("The unresolved patio decision is retained", content.sections.some((section) => section.kind === "open_questions" && section.items.some((item) => /patio/i.test(item.text) && item.certainty === "uncertain")));
+      check(
+        "Every recorded item retains exact source evidence",
+        items
+          .filter((item) => item.certainty !== "general")
+          .every((item) =>
+            context.snapshot.sources.some(
+              (source) =>
+                source.id === item.sourceId &&
+                source.text.includes(item.sourceQuote ?? "MISSING"),
+            ),
+          ),
+      );
+      check(
+        "General suggestions are separated from recorded client agreements",
+        content.sections.some(
+          (section) => section.kind === "general_guidance",
+        ) &&
+          items
+            .filter((item) => item.certainty === "general")
+            .every(
+              (item) => item.sourceId === null && item.sourceQuote === null,
+            ),
+      );
+      check(
+        "Photographer uncertainty remains visible",
+        items.some(
+          (item) =>
+            /photo/i.test(item.text) &&
+            item.certainty !== "confirmed" &&
+            /confirm|request|uncertain|availability|await/i.test(item.text),
+        ),
+      );
+      check(
+        "The unresolved patio decision is retained",
+        content.sections.some(
+          (section) =>
+            section.kind === "open_questions" &&
+            section.items.some(
+              (item) =>
+                /patio/i.test(item.text) && item.certainty === "uncertain",
+            ),
+        ),
+      );
       if (kind === "seller_preparation") {
-        check("Confirmed cleaning remains a recorded fact", content.sections.some((section) => section.kind === "recorded_facts" && section.items.some((item) => /clean/i.test(item.text) && item.certainty === "confirmed")));
-        check("Useful practical preparation advice is produced", items.filter((item) => item.certainty === "general").length >= 3);
+        check(
+          "Confirmed cleaning remains a recorded fact",
+          content.sections.some(
+            (section) =>
+              section.kind === "recorded_facts" &&
+              section.items.some(
+                (item) =>
+                  /clean/i.test(item.text) && item.certainty === "confirmed",
+              ),
+          ),
+        );
+        check(
+          "Useful practical preparation advice is produced",
+          items.filter((item) => item.certainty === "general").length >= 3,
+        );
       } else {
-        check("The selected appointment record is used", items.some((item) => item.sourceId === "appointment:eval-appointment"));
-        check("Client context informs the briefing", /checklist|patio|text messages/i.test(items.map((item) => item.text).join(" ")));
+        check(
+          "The selected appointment record is used",
+          items.some(
+            (item) => item.sourceId === "appointment:eval-appointment",
+          ),
+        );
+        check(
+          "Client context informs the briefing",
+          /checklist|patio|text messages/i.test(
+            items.map((item) => item.text).join(" "),
+          ),
+        );
       }
       return content;
     });

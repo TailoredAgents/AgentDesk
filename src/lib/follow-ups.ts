@@ -1,7 +1,9 @@
+import { currentContextText } from "./intelligence";
 import type { FollowUpRecommendation, WorkspaceData } from "./types";
 
 type FollowUpData = Pick<
   WorkspaceData,
+  | "clientFacts"
   | "workspace"
   | "clients"
   | "properties"
@@ -133,14 +135,14 @@ export function deriveFollowUps(data: FollowUpData): FollowUpRecommendation[] {
       (item) =>
         item.agentId === group.agentId &&
         item.clientId === group.clientId &&
-        (!group.propertyId || item.propertyId === group.propertyId),
+        (!item.propertyId || item.propertyId === group.propertyId),
     );
     const conversations = data.conversations
       .filter(
         (item) =>
           item.agentId === group.agentId &&
           item.clientId === group.clientId &&
-          (!group.propertyId || item.propertyId === group.propertyId) &&
+          (!item.propertyId || item.propertyId === group.propertyId) &&
           item.source !== "followup",
       )
       .slice(0, 3);
@@ -198,19 +200,26 @@ export function deriveFollowUps(data: FollowUpData): FollowUpRecommendation[] {
           ]),
     ];
     const reason = `${commitments[0]?.title || tasks[0]?.title}${dueDate ? ` — ${dueDate < today ? "due" : "target"} ${dueDate}` : " — still unresolved"}. ${status === "approved_draft" ? "An approved draft is saved, but the underlying work is still open; no message was sent." : "No completion is recorded for this open work."}`;
+    const memory = (data.clientFacts ?? []).filter(
+      (f) =>
+        f.agentId === group.agentId &&
+        f.clientId === group.clientId &&
+        (!f.propertyId || f.propertyId === group.propertyId),
+    );
+    const current = (text: string) => currentContextText(text, memory);
     const sourceSnapshot = [
       `Workspace reference date: ${today}. Dataset revision: ${data.workspace.revision ?? 0}. Client: ${client.name}. Agent: ${group.agentId}.`,
       property
         ? `Related property: ${property.address}. Stage: ${property.stage}.`
         : "No property is linked to this relationship follow-up.",
       "OPEN WORK EVIDENCE",
-      ...evidence,
+      ...evidence.map(current),
       "AUTHORIZED CLIENT NOTES",
-      ...client.notes,
+      ...client.notes.slice(-5).map(current),
       ...(property
         ? [
             "LISTING NOTES",
-            ...property.notes,
+            ...property.notes.slice(-4).map(current),
             ...(property.targetDate
               ? [
                   `Recorded listing target: ${property.targetDate}; a target is not a confirmed appointment.`,
@@ -219,15 +228,24 @@ export function deriveFollowUps(data: FollowUpData): FollowUpRecommendation[] {
           ]
         : []),
       "RECORDED APPOINTMENTS",
-      ...appointments.map(
-        (item) =>
+      ...appointments.map((item) =>
+        current(
           `${item.title}; ${item.startsAt}; ${item.status}. ${item.briefing}`,
+        ),
       ),
       "CONVERSATION EXCERPTS",
       ...conversations.map(
         (item) =>
-          `${item.title} (${item.createdAt}): ${item.transcript.slice(0, 7000)}`,
+          `${item.title} (${item.createdAt}): ${current(item.transcript).slice(0, 2200)}`,
       ),
+      "CURRENT REVIEWED INTELLIGENCE (requests are not bookings)",
+      ...memory
+        .filter((f) => f.status === "current")
+        .slice(0, 24)
+        .map(
+          (f) =>
+            `${f.topic} (${f.certainty}): ${f.value} Source ${f.sourceConversationId}; reviewed ${f.reviewedAt}. Evidence: ${f.sourceQuote}`,
+        ),
       "No message delivery is connected. Approval saves a draft; it does not complete a follow-up commitment.",
     ]
       .join("\n")

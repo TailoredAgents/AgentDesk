@@ -6,6 +6,8 @@ import { Badge, Modal, SectionTitle, shortDate, time } from "../ui";
 import { CommitmentList } from "./commitments";
 import { TaskRow } from "./shared";
 import { orderedTasks } from "@/lib/workspace-insights";
+import { currentContextText, situationImpacts } from "@/lib/intelligence";
+import { ClientIntelligence } from "./intelligence";
 import { WorkProducts } from "./work-products";
 import { MessageActions } from "./message-actions";
 import { AppointmentCalendar } from "./calendar-actions";
@@ -32,6 +34,10 @@ export function ClientDetail({
   notify: (message: string) => void;
 }) {
   if (!c) return null;
+  const memory = (data.clientFacts ?? []).filter(
+    (f) => f.agentId === c.agentId && f.clientId === c.id,
+  );
+  const impacts = situationImpacts(data).filter((i) => i.clientId === c.id);
   const messages = data.packages
     .filter((pkg) => pkg.clientId === c.id)
     .flatMap((pkg) =>
@@ -76,10 +82,22 @@ export function ClientDetail({
               <ArrowUpRight size={15} />
             </button>
           ))}
+        <ClientIntelligence
+          data={data}
+          client={c}
+          onUpdate={onUpdate}
+          onReview={onReview}
+          notify={notify}
+        />
         {appts.map((a) => (
           <div className="client-briefing" key={a.id}>
             <div className="eyebrow">APPOINTMENT BRIEFING</div>
             <h3>{a.title}</h3>
+            {impacts.some(
+              (i) => i.kind === "appointment" && i.targetId === a.id,
+            ) && (
+              <Badge tone="amber">Briefing needs review after a change</Badge>
+            )}
             <p>{a.briefing}</p>
             <small>
               {shortDate(a.startsAt)} · {time(a.startsAt)} · {a.status}
@@ -111,7 +129,13 @@ export function ClientDetail({
         {commitments.length > 0 && (
           <>
             <SectionTitle title="Commitments & unanswered questions" />
-            <CommitmentList items={commitments} onChange={onCommitment} />
+            <CommitmentList
+              items={commitments}
+              onChange={onCommitment}
+              outdatedIds={impacts
+                .filter((i) => i.kind === "commitment")
+                .map((i) => i.targetId)}
+            />
           </>
         )}
         {tasks.length > 0 && (
@@ -142,7 +166,11 @@ export function ClientDetail({
                 <div>
                   <strong>{pkg.title}</strong>
                   <small>
-                    {pkg.origin === "sample" ? "Saved sample output" : "OpenAI"}{" "}
+                    {pkg.origin === "sample"
+                      ? "Saved sample output"
+                      : pkg.origin === "human"
+                        ? "Human correction"
+                        : "OpenAI"}{" "}
                     · {shortDate(pkg.createdAt)}
                   </small>
                 </div>
@@ -174,10 +202,15 @@ export function ClientDetail({
             ))}
           </>
         )}
-        <SectionTitle title="Relationship notes" />
+        <SectionTitle title="Recorded relationship notes" />
         {c.notes.length ? (
           c.notes.map((n, i) => (
             <p className="saved-note" key={i}>
+              {currentContextText(n, memory) !== n && (
+                <Badge tone="amber">
+                  Includes earlier information · see current situation above
+                </Badge>
+              )}
               {n}
             </p>
           ))
@@ -190,6 +223,13 @@ export function ClientDetail({
             {messages.map((m) => (
               <div className="saved-message" key={m.id}>
                 <Badge tone="blue">Approved · not sent</Badge>
+                {impacts.some(
+                  (i) => i.kind === "message" && i.targetId === m.id,
+                ) && (
+                  <p className="intelligence-warning">
+                    Earlier plan · review the updated draft before use.
+                  </p>
+                )}
                 <p>{m.body}</p>
                 <MessageActions body={m.body} notify={notify} />
               </div>

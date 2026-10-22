@@ -7,6 +7,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { ActionChange, ClientFact } from "../intelligence-types";
 import type { Agent, Fact, ReviewAudit } from "../types";
 import type {
   WorkProductContent,
@@ -77,7 +78,7 @@ export const conversations = pgTable("conversations", {
   title: text("title").notNull(),
   transcript: text("transcript").notNull(),
   source: text("source")
-    .$type<"note" | "audio" | "sample" | "followup">()
+    .$type<"note" | "audio" | "sample" | "followup" | "correction">()
     .notNull(),
   createdAt: createdAt(),
 });
@@ -96,7 +97,7 @@ export const workPackages = pgTable("work_packages", {
     .$type<"pending" | "reviewed">()
     .notNull()
     .default("pending"),
-  origin: text("origin").$type<"sample" | "openai">().notNull(),
+  origin: text("origin").$type<"sample" | "openai" | "human">().notNull(),
   createdAt: createdAt(),
   requestId: text("request_id"),
   recommendationId: text("recommendation_id"),
@@ -118,6 +119,8 @@ export const proposedActions = pgTable("proposed_actions", {
       | "task"
       | "listing_update"
       | "question"
+      | "intelligence"
+      | "task_update"
     >()
     .notNull(),
   title: text("title").notNull(),
@@ -134,6 +137,7 @@ export const proposedActions = pgTable("proposed_actions", {
   reviewedAt: timestamp("reviewed_at", { withTimezone: true, mode: "string" }),
   original: jsonb("original").$type<ReviewAudit["original"]>().notNull(),
   originalAvailable: boolean("original_available").notNull().default(true),
+  change: jsonb("change").$type<ActionChange>(),
 });
 export const tasks = pgTable(
   "tasks",
@@ -285,4 +289,31 @@ export const reviewAudits = pgTable("review_audits", {
   }).notNull(),
   actor: text("actor").notNull(),
   originalAvailable: boolean("original_available").notNull().default(true),
+});
+
+export const clientFacts = pgTable("client_facts", {
+  id: id(),
+  workspaceId: workspaceId(),
+  agentId: text("agent_id").notNull(),
+  clientId: text("client_id").notNull(),
+  propertyId: text("property_id"),
+  topic: text("topic").$type<ClientFact["topic"]>().notNull(),
+  value: text("value").notNull(),
+  sourceQuote: text("source_quote").notNull(),
+  sourceConversationId: text("source_conversation_id").notNull(),
+  certainty: text("certainty").$type<ClientFact["certainty"]>().notNull(),
+  effectiveDate: text("effective_date"),
+  status: text("status").$type<ClientFact["status"]>().notNull(),
+  recordedAt: timestamp("recorded_at", {
+    withTimezone: true,
+    mode: "string",
+  }).notNull(),
+  reviewedAt: timestamp("reviewed_at", {
+    withTimezone: true,
+    mode: "string",
+  }).notNull(),
+  reviewer: text("reviewer").notNull(),
+  sourceActionId: text("source_action_id").unique(),
+  supersedes: jsonb("supersedes").$type<string[]>().notNull().default([]),
+  humanEdited: boolean("human_edited").notNull().default(false),
 });

@@ -1,4 +1,6 @@
 "use client";
+import { currentContextText, situationImpacts } from "@/lib/intelligence";
+import { IntelligenceExceptions } from "./intelligence";
 
 import { ArrowUpRight, ChevronRight, Check } from "lucide-react";
 import type { WorkspaceData, Property, Task, Commitment } from "@/lib/types";
@@ -38,6 +40,13 @@ export function PropertyDetail({
   notify: (message: string) => void;
 }) {
   if (!p) return null;
+  const memory = (data.clientFacts ?? []).filter(
+    (f) =>
+      f.agentId === p.agentId &&
+      f.clientId === p.clientId &&
+      f.propertyId === p.id,
+  );
+  const impacts = situationImpacts(data).filter((i) => i.propertyId === p.id);
   const tasks = orderedTasks(
     data.tasks.filter((t) => t.propertyId === p.id),
     data.workspace.referenceDate,
@@ -79,6 +88,12 @@ export function PropertyDetail({
             <ArrowUpRight size={14} />
           </button>
         </div>
+        <IntelligenceExceptions
+          data={data}
+          propertyId={p.id}
+          onClient={onClient}
+          onReview={onReview}
+        />
         <div className="milestone-track">
           {listingMilestones(p, tasks).map((milestone, index) => (
             <div
@@ -109,7 +124,13 @@ export function PropertyDetail({
         {commitments.length > 0 && (
           <>
             <SectionTitle title="Dependencies & commitments" />
-            <CommitmentList items={commitments} onChange={onCommitment} />
+            <CommitmentList
+              items={commitments}
+              onChange={onCommitment}
+              outdatedIds={impacts
+                .filter((i) => i.kind === "commitment")
+                .map((i) => i.targetId)}
+            />
           </>
         )}
         <SectionTitle
@@ -151,7 +172,11 @@ export function PropertyDetail({
                   <strong>{pkg.title}</strong>
                   <small>
                     {shortDate(pkg.createdAt)} ·{" "}
-                    {pkg.origin === "sample" ? "Saved sample" : "OpenAI"}
+                    {pkg.origin === "sample"
+                      ? "Saved sample"
+                      : pkg.origin === "human"
+                        ? "Human correction"
+                        : "OpenAI"}
                   </small>
                 </div>
                 <Badge tone={pkg.status === "pending" ? "blue" : "green"}>
@@ -167,6 +192,11 @@ export function PropertyDetail({
             <SectionTitle title="Listing notes" />
             {p.notes.map((n, i) => (
               <p className="saved-note" key={i}>
+                {currentContextText(n, memory) !== n && (
+                  <Badge tone="amber">
+                    Earlier plan · check the current client situation
+                  </Badge>
+                )}
                 {n}
               </p>
             ))}

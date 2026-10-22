@@ -6,8 +6,10 @@ import { Badge, shortDate } from "../ui";
 export function CommitmentList({
   items,
   onChange,
+  outdatedIds = [],
 }: {
   items: Commitment[];
+  outdatedIds?: string[];
   onChange: (item: Commitment) => void;
 }) {
   return (
@@ -18,6 +20,12 @@ export function CommitmentList({
             {item.status} · {item.kind.replace("_", " ")}
           </Badge>
           <h3>{item.title}</h3>
+          {outdatedIds.includes(item.id) && (
+            <p className="intelligence-warning">
+              This commitment refers to an earlier plan. Check the current
+              client situation before acting.
+            </p>
+          )}
           <p>{item.detail}</p>
           {item.sourceQuote && <blockquote>“{item.sourceQuote}”</blockquote>}
           <p className="small-text muted">

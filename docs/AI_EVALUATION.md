@@ -16,6 +16,8 @@ npm run test:ai:live -- --allow-live
 
 This command makes paid API calls only with the explicit `--allow-live` flag. It uses fictional seller/buyer conversations and a synthetic fictional speech fixture. It checks configured model access, structured generation, ambiguity and conflicting dates, distinct communication profiles, factual rewriting, proactive drafting, and transcription. The report is saved to `test-results/ai-live-eval.json` (gitignored). Missing credentials produce **SKIPPED** and exit code 2; that is not a passing provider test.
 
+The `intelligence:connected-seller-change` case supplies Sarah's previously reviewed situation and her second conversation. It checks changed cleaning dates, requested photography, explicit communication preferences, and coordinated replacement proposals. It requires real provider access; the saved in-app example does not satisfy this evaluation.
+
 To evaluate a different authorized fictional recording:
 
 ```powershell

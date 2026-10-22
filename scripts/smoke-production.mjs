@@ -792,6 +792,145 @@ try {
     "Later question/task updates and new versions must not mutate the approved PDF.",
   );
 
+  // The saved connected scenario follows the same protected review and version APIs.
+  assert.equal(
+    (
+      await request("/api/intelligence/sample", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      })
+    ).status,
+    401,
+  );
+  const beforeChanges = await readWorkspace();
+  const photographer = beforeChanges.packages
+    .find((p) => p.id === "package-sarah")
+    .actions.find((a) => a.id === "sarah-photographer");
+  if (photographer.status === "pending")
+    await expectJson(
+      await mutation("/api/packages/package-sarah/review", {
+        decisions: [
+          { id: photographer.id, body: photographer.body, status: "approved" },
+        ],
+      }),
+      200,
+      "Approve photography task before the change",
+    );
+  const changeReview = await expectJson(
+    await mutation("/api/intelligence/sample", {}),
+    200,
+    "Load connected saved example without provider credentials",
+  );
+  const changeRetry = await expectJson(
+    await mutation("/api/intelligence/sample", {}),
+    200,
+    "Retry connected example",
+  );
+  assert.equal(changeRetry.packageId, changeReview.packageId);
+  const changePackage = changeReview.workspace.packages.find(
+    (p) => p.id === changeReview.packageId,
+  );
+  assert.equal(changePackage.origin, "sample");
+  assert.equal(
+    changePackage.actions.filter((a) => a.kind === "intelligence").length,
+    2,
+  );
+  assert.ok(changePackage.actions.some((a) => a.kind === "task_update"));
+  assert.equal(
+    changeReview.workspace.clientFacts.find(
+      (f) => f.topic === "cleaning" && f.status === "current",
+    ).effectiveDate,
+    "2026-10-26",
+  );
+  const changeDecisions = {
+    decisions: changePackage.actions.map((a) => ({
+      id: a.id,
+      body: a.body,
+      status: "approved",
+    })),
+  };
+  const changed = await expectJson(
+    await mutation(`/api/packages/${changePackage.id}/review`, changeDecisions),
+    200,
+    "Approve coordinated changes",
+  );
+  assert.equal(
+    changed.clientFacts.find(
+      (f) => f.topic === "cleaning" && f.status === "current",
+    ).effectiveDate,
+    "2026-10-28",
+  );
+  assert.equal(
+    changed.clientFacts.find(
+      (f) => f.topic === "photography" && f.status === "current",
+    ).certainty,
+    "requested",
+  );
+  assert.equal(
+    changed.tasks.filter((t) => t.sourceActionId === "sarah-photographer")
+      .length,
+    1,
+  );
+  const refreshedVersion = await expectJson(
+    await mutation("/api/work-products", {
+      kind: product.kind,
+      agentId: product.agentId,
+      productId: product.id,
+      copyVersionId: draft.id,
+      refreshFromCurrent: true,
+      requestId: randomUUID(),
+    }),
+    200,
+    "Refresh PDF draft from reviewed facts without AI",
+  );
+  const fresh = refreshedVersion.workspace.workProducts
+    .find((p) => p.id === product.id)
+    .versions.find((v) => v.id === refreshedVersion.versionId);
+  assert.match(JSON.stringify(fresh.content.sections), /October 28/);
+  assert.equal(fresh.status, "pending");
+  assert.deepEqual(
+    Buffer.from(
+      await (await request(pdfPath, { headers: sessionHeaders })).arrayBuffer(),
+    ),
+    pdfBytes,
+  );
+  const preference = changed.clientFacts.find(
+    (f) => f.topic === "communication" && f.status === "current",
+  );
+  const correction = await expectJson(
+    await mutation(`/api/intelligence/${preference.id}`, {
+      requestId: randomUUID(),
+      value: "Sarah prefers short email updates.",
+      certainty: "confirmed",
+      effectiveDate: null,
+      retire: false,
+    }),
+    200,
+    "Prepare human correction",
+  );
+  const correctionPackage = correction.workspace.packages.find(
+    (p) => p.id === correction.packageId,
+  );
+  assert.equal(correctionPackage.origin, "human");
+  const corrected = await expectJson(
+    await mutation(`/api/packages/${correction.packageId}/review`, {
+      decisions: correctionPackage.actions.map((a) => ({
+        id: a.id,
+        body: a.body,
+        status: "approved",
+      })),
+    }),
+    200,
+    "Approve human correction",
+  );
+  assert.equal(
+    corrected.clientFacts.find(
+      (f) => f.topic === "communication" && f.status === "current",
+    ).value,
+    "Sarah prefers short email updates.",
+  );
+
   const restored = await mutation("/api/demo/reset", {
     confirmation: "RESTORE FICTIONAL WORKSPACE",
   });
@@ -818,7 +957,7 @@ try {
     ),
   );
   console.log(
-    `Production HTTP checks passed: healthy in ${Math.round(elapsed)}ms; auth, partial/concurrent approvals, immutable parsed PDF download, version copying, missing-provider failures, approved questions and tasks, confirmed UTC calendar export, and guarded reset verified.`,
+    `Production HTTP checks passed: healthy in ${Math.round(elapsed)}ms; auth, partial/concurrent approvals, immutable parsed PDF download, version copying, missing-provider failures, approved questions and tasks, confirmed UTC calendar export, coordinated situation changes, idempotent saved example, human correction, refreshed immutable PDF versions, and guarded reset verified.`,
   );
 } catch (error) {
   console.error(logs);

@@ -27,6 +27,10 @@ export function reviewEffect(
   propertyLinked: boolean,
 ): string {
   switch (action.kind) {
+    case "intelligence":
+      return "Apply the reviewed client information and preserve the previous evidence";
+    case "task_update":
+      return "Update the linked task without creating a duplicate or changing its calendar booking";
     case "summary":
       return "Update the package summary";
     case "crm_note":

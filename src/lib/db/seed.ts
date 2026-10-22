@@ -1,3 +1,7 @@
+import {
+  baselineStatements,
+  sampleIntelligenceFacts,
+} from "../intelligence-sample";
 import { and, eq, sql } from "drizzle-orm";
 import type { Database } from "./index";
 import * as schema from "./schema";
@@ -19,7 +23,7 @@ import {
   legacySarahTranscript,
 } from "./seed-data";
 
-export const SAMPLE_DATA_VERSION = 5;
+export const SAMPLE_DATA_VERSION = 6;
 type SeedConnection = Pick<Database, "insert" | "update" | "select">;
 const scoped = <T extends object>(record: T) => ({
   ...record,
@@ -184,6 +188,27 @@ export async function populateSampleWorkspace(tx: SeedConnection) {
         },
       ].map(scoped),
     )
+    .onConflictDoNothing();
+  await tx
+    .insert(schema.conversations)
+    .values(
+      scoped({
+        id: "conversation-sarah-reviewed-baseline",
+        agentId: "jordan",
+        clientId: "sarah",
+        propertyId: "willow",
+        title: "Sarah’s reviewed starting situation · saved example",
+        transcript:
+          baselineStatements.map((o) => o.sourceQuote).join(" ") +
+          " Sarah’s patio furniture question is still unresolved.",
+        source: "sample" as const,
+        createdAt: "2026-10-21T14:00:00.000Z",
+      }),
+    )
+    .onConflictDoNothing();
+  await tx
+    .insert(schema.clientFacts)
+    .values(sampleIntelligenceFacts().map(scoped))
     .onConflictDoNothing();
   await populateSavedSellerProduct(tx);
 }

@@ -6,10 +6,21 @@ import { getDatabase, probeReadiness, type Database } from "./db";
 import * as tables from "./db/schema";
 import { SAMPLE_WORKSPACE_ID, sampleWorkspace } from "./db/seed-data";
 import { populateSampleWorkspace, SAMPLE_DATA_VERSION } from "./db/seed";
+import {
+  coordinateActions,
+  factProperty,
+  sameRelationship,
+} from "./intelligence";
+import {
+  observationSchema,
+  validateObservations,
+} from "./intelligence-validation";
+import { topicLabels } from "./intelligence-types";
 import { deriveFollowUps } from "./follow-ups";
 import { getCapabilities } from "./integrations";
 import {
   buildWorkProductSnapshot,
+  refreshWorkProduct,
   validateWorkProductContent,
 } from "./work-product-content";
 import type {
@@ -92,6 +103,7 @@ const factSchema = z.object({
   sourceQuote: text(4000),
 });
 const generatedSchema = z.object({
+  observations: z.array(observationSchema).max(12).optional(),
   summary: text(12000),
   facts: z.array(factSchema).max(40),
   clarifications: z.array(text(2000)).max(20),
@@ -267,6 +279,7 @@ export async function getWorkspace(
     workProducts,
     productVersions,
     productAudits,
+    clientFacts,
   ] = await serialQueries([
     db.select().from(tables.agents).where(eq(tables.agents.workspaceId, w)),
     db.select().from(tables.clients).where(eq(tables.clients.workspaceId, w)),
@@ -341,9 +354,14 @@ export async function getWorkspace(
         asc(tables.workProductAudits.createdAt),
         asc(tables.workProductAudits.id),
       ),
+    db
+      .select()
+      .from(tables.clientFacts)
+      .where(eq(tables.clientFacts.workspaceId, w)),
   ]);
   const result: WorkspaceData = {
     workspace,
+    clientFacts: clientFacts.map(publicRow),
     agents: agents.map(publicRow),
     clients: clients.map(publicRow),
     properties: properties.map(publicRow),
@@ -511,6 +529,124 @@ export async function reviewPackage(
       });
       let detail = edited.body;
       if (decision.status === "approved") {
+        if (action.kind === "intelligence") {
+          if (edited.body.length > 1000)
+            throw new DomainError(
+              "Keep a remembered fact to 1000 characters or fewer.",
+            );
+          const change = action.change;
+          if (!change || change.type !== "fact")
+            throw new DomainError("The intelligence proposal is incomplete.");
+          const propertyId = factProperty(
+            change.observation.topic,
+            workPackage.propertyId,
+          );
+          const state = await getWorkspace(scope, tx);
+          const current = (state.clientFacts ?? []).filter(
+            (f) =>
+              sameRelationship(f, { ...workPackage, propertyId }) &&
+              f.topic === change.observation.topic &&
+              f.status === "current",
+          );
+          if (
+            !isDeepStrictEqual(
+              current.map((f) => f.id).sort(),
+              change.before.map((f) => f.id).sort(),
+            )
+          )
+            throw new DomainError(
+              "This client's situation changed after this proposal was prepared. Reject this stale proposal and prepare a current correction.",
+              409,
+              "STALE_INTELLIGENCE",
+            );
+          const replaces =
+            change.disposition === "replace" || change.disposition === "retire";
+          if (replaces)
+            for (const prior of current)
+              await tx
+                .update(tables.clientFacts)
+                .set({
+                  status:
+                    change.disposition === "retire" ? "retired" : "superseded",
+                })
+                .where(
+                  and(
+                    eq(tables.clientFacts.id, prior.id),
+                    eq(tables.clientFacts.workspaceId, scope.workspaceId),
+                  ),
+                );
+          await tx.insert(tables.clientFacts).values({
+            id: randomUUID(),
+            ...linkage,
+            propertyId,
+            topic: change.observation.topic,
+            value: edited.body,
+            sourceQuote: action.sourceQuote,
+            sourceConversationId: workPackage.conversationId,
+            certainty:
+              change.disposition === "conflict"
+                ? "disputed"
+                : change.observation.certainty,
+            effectiveDate: edited.dueDate,
+            status: change.disposition === "retire" ? "retired" : "current",
+            recordedAt: workPackage.createdAt,
+            reviewedAt: now,
+            reviewer: "Workspace reviewer (shared sample access)",
+            supersedes: replaces ? current.map((f) => f.id) : [],
+            humanEdited: Boolean(
+              change.humanCorrection ||
+              edited.body !== action.original.body ||
+              edited.dueDate !== action.original.dueDate,
+            ),
+          });
+        }
+        if (action.kind === "task_update") {
+          const change = action.change;
+          if (!change || change.type !== "task")
+            throw new DomainError("The task proposal is incomplete.");
+          const [target] = await tx
+            .select()
+            .from(tables.tasks)
+            .where(
+              and(
+                eq(tables.tasks.id, change.targetId),
+                eq(tables.tasks.workspaceId, scope.workspaceId),
+              ),
+            );
+          if (
+            !target ||
+            !sameRelationship(target, workPackage) ||
+            !isDeepStrictEqual(
+              {
+                title: target.title,
+                detail: target.detail,
+                dueDate: target.dueDate,
+                status: target.status,
+                calendarSchedule: target.calendarSchedule ?? null,
+              },
+              change.before,
+            )
+          )
+            throw new DomainError(
+              "This task changed after the update was prepared. Refresh and prepare a new correction.",
+              409,
+              "STALE_TASK",
+            );
+          await tx
+            .update(tables.tasks)
+            .set({
+              title: edited.title,
+              detail: edited.body,
+              dueDate: edited.dueDate,
+            })
+            .where(
+              and(
+                eq(tables.tasks.id, target.id),
+                eq(tables.tasks.workspaceId, scope.workspaceId),
+              ),
+            );
+        }
+
         if (action.kind === "summary")
           await tx
             .update(tables.workPackages)
@@ -722,6 +858,7 @@ export type ConversationInput = {
   expectedWorkspaceRevision?: number;
 };
 export type GeneratedPackage = {
+  observations?: import("./intelligence-types").Observation[];
   summary: string;
   facts: Fact[];
   clarifications: string[];
@@ -802,6 +939,7 @@ export async function createConversationPackage(
   input: ConversationInput,
   generated: GeneratedPackage,
   scope: WorkspaceScope = defaultScope,
+  options: { origin?: "sample" | "openai" } = {},
 ): Promise<{ conversation: Conversation; package: WorkPackage }> {
   const clean = parse(inputSchema, input);
   const prepared = parse(generatedSchema, generated);
@@ -821,7 +959,7 @@ export async function createConversationPackage(
     propertyId: clean.propertyId,
     title: clean.title,
     transcript: clean.transcript,
-    source: clean.source,
+    source: options.origin === "sample" ? "sample" : clean.source,
     id: randomUUID(),
     createdAt: now,
   };
@@ -844,7 +982,7 @@ export async function createConversationPackage(
       },
       originalAvailable: true,
     })),
-    origin: "openai",
+    origin: options.origin ?? "openai",
     status: "pending",
     createdAt: now,
     requestId: clean.requestId ?? null,
@@ -855,6 +993,12 @@ export async function createConversationPackage(
   return db.transaction(async (tx) => {
     const lockedWorkspace = await lockWorkspace(tx, scope);
     await validateLinks(tx, scope, clean);
+    if (options.origin === "sample" && !lockedWorkspace.sample)
+      throw new DomainError(
+        "Saved examples require a fictional workspace.",
+        403,
+        "SAMPLE_ONLY",
+      );
     if (clean.requestId) {
       const existing = await findPackageByKey(
         tx,
@@ -870,7 +1014,7 @@ export async function createConversationPackage(
           prior.propertyId !== clean.propertyId ||
           prior.title !== clean.title ||
           prior.transcript !== clean.transcript ||
-          prior.source !== clean.source ||
+          prior.source !== conversation.source ||
           (existing.package.recommendationId ?? undefined) !==
             clean.recommendationId
         )
@@ -934,6 +1078,28 @@ export async function createConversationPackage(
         ...recommendation.commitmentIds.map((id) => `commitment:${id}`),
       ].sort();
     }
+    if (clean.source !== "followup") {
+      let observations;
+      try {
+        observations = validateObservations(
+          prepared.observations ?? [],
+          clean.transcript,
+        );
+      } catch (error) {
+        throw new DomainError(
+          error instanceof Error
+            ? error.message
+            : "Invalid intelligence evidence.",
+        );
+      }
+      workPackage.actions = coordinateActions(
+        await getWorkspace(scope, tx),
+        clean,
+        workPackage.actions,
+        observations,
+        randomUUID,
+      );
+    }
     await tx
       .insert(tables.conversations)
       .values({ ...conversation, workspaceId: scope.workspaceId });
@@ -958,7 +1124,7 @@ export async function createConversationPackage(
       clientId: clean.clientId,
       propertyId: clean.propertyId,
       title: `Ready for review: ${clean.title}`,
-      detail: `${actions.length} actions prepared by OpenAI from an authorized conversation. No actions have been applied or messages sent.`,
+      detail: `${actions.length} actions prepared from ${options.origin === "sample" ? "a saved fictional example" : "an authorized conversation using OpenAI"}. No actions have been applied or messages sent.`,
       kind: "package_prepared",
       createdAt: now,
     });
@@ -1019,6 +1185,136 @@ export async function updateCommitment(
   return getWorkspace(scope);
 }
 
+/** Corrections use the same pending actions, decisions and audit trail as AI proposals. */
+export async function proposeFactCorrection(
+  factId: string,
+  input: unknown,
+  scope: WorkspaceScope = defaultScope,
+) {
+  const clean = parse(
+    z.object({
+      requestId: z.uuid(),
+      value: text(1000),
+      certainty: z.enum(["confirmed", "requested", "uncertain"]),
+      effectiveDate: date.nullable(),
+      retire: z.boolean(),
+    }),
+    input,
+  );
+  const { db } = await getDatabase();
+  return db.transaction(async (tx) => {
+    await lockWorkspace(tx, scope);
+    const state = await getWorkspace(scope, tx);
+    const fact = state.clientFacts?.find((f) => f.id === factId);
+    if (!fact) throw new DomainError("Fact not found.", 404, "NOT_FOUND");
+    const transcript = `Human correction: ${topicLabels[fact.topic]}\nRecorded statement: ${clean.value}\nCertainty: ${clean.certainty}\nEffective date: ${clean.effectiveDate ?? "not recorded"}\nRequested review: ${clean.retire ? "Retire this information from future work." : "Replace the current information with this correction."}`;
+    const existing = await findPackageByKey(
+      tx,
+      clean.requestId,
+      "requestId",
+      scope,
+    );
+    if (existing) {
+      if (
+        existing.conversation.transcript !== transcript ||
+        !existing.package.actions.some(
+          (a) =>
+            a.change?.type === "fact" &&
+            a.change.before.some((f) => f.id === factId),
+        )
+      )
+        throw new DomainError(
+          "This request ID belongs to a different correction.",
+          409,
+          "REQUEST_CONFLICT",
+        );
+      return existing.package.id;
+    }
+    if (fact.status !== "current")
+      throw new DomainError(
+        "Correct the current fact instead of a historical record.",
+        409,
+        "STALE_INTELLIGENCE",
+      );
+    const before = (state.clientFacts ?? []).filter(
+      (f) =>
+        sameRelationship(f, fact) &&
+        f.topic === fact.topic &&
+        f.status === "current",
+    );
+    const now = new Date().toISOString(),
+      conversationId = randomUUID(),
+      packageId = randomUUID(),
+      actionId = randomUUID();
+    const title = `${topicLabels[fact.topic]} · ${clean.retire ? "stop using this information" : "human correction"}`;
+    const links = {
+      workspaceId: scope.workspaceId,
+      agentId: fact.agentId,
+      clientId: fact.clientId,
+      propertyId: fact.propertyId,
+    };
+    await tx
+      .insert(tables.conversations)
+      .values({
+        id: conversationId,
+        ...links,
+        title,
+        transcript,
+        source: "correction",
+        createdAt: now,
+      });
+    await tx
+      .insert(tables.workPackages)
+      .values({
+        id: packageId,
+        ...links,
+        conversationId,
+        title,
+        summary:
+          "A human correction is ready for explicit review. Earlier evidence will remain in history.",
+        facts: [],
+        clarifications: [],
+        status: "pending",
+        origin: "human",
+        createdAt: now,
+        requestId: clean.requestId,
+      });
+    await tx
+      .insert(tables.proposedActions)
+      .values({
+        id: actionId,
+        workspaceId: scope.workspaceId,
+        packageId,
+        position: 0,
+        kind: "intelligence",
+        title,
+        body: clean.value,
+        dueDate: clean.effectiveDate,
+        certainty: clean.certainty,
+        sourceQuote: transcript,
+        status: "pending",
+        original: { title, body: clean.value, dueDate: clean.effectiveDate },
+        originalAvailable: true,
+        change: {
+          type: "fact",
+          observation: {
+            topic: fact.topic,
+            value: clean.value,
+            certainty: clean.certainty,
+            effectiveDate: clean.effectiveDate,
+            sourceQuote: transcript,
+            intent: "replacement",
+          },
+          disposition: clean.retire ? "retire" : "replace",
+          before,
+          humanCorrection: true,
+        },
+      });
+    await advanceWorkspaceRevision(tx, scope);
+    return packageId;
+  });
+}
+
 export const SAMPLE_RESET_CONFIRMATION = "RESTORE FICTIONAL WORKSPACE";
 export async function resetSampleWorkspace(
   confirmation: string,
@@ -1046,6 +1342,7 @@ export async function resetSampleWorkspace(
         "SAMPLE_ONLY",
       );
     for (const table of [
+      tables.clientFacts,
       tables.workProductAudits,
       tables.workProductVersions,
       tables.workProducts,
@@ -1109,6 +1406,7 @@ const productLinkSchema = z.object({
 const createProductSchema = productLinkSchema.extend({
   productId: text(100).optional(),
   copyVersionId: text(100).optional(),
+  refreshFromCurrent: z.boolean().optional(),
   requestId: z.uuid(),
   requestFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
   content: z.unknown(),
@@ -1126,6 +1424,7 @@ export type CreateWorkProductInput = {
   sourcePackageId?: string | null;
   productId?: string;
   copyVersionId?: string;
+  refreshFromCurrent?: boolean;
   requestId: string;
   requestFingerprint: string;
   content: WorkProductContent;
@@ -1146,6 +1445,7 @@ function productMetadata(input: z.infer<typeof createProductSchema>) {
   return {
     productId: input.productId ?? null,
     copyVersionId: input.copyVersionId ?? null,
+    ...(input.refreshFromCurrent ? { refreshFromCurrent: "true" } : {}),
     kind: input.kind,
     agentId: input.agentId,
     clientId: input.clientId,
@@ -1226,11 +1526,24 @@ export async function createWorkProductDraft(
           .find((item) => item.id === clean.productId)
           ?.versions.find((item) => item.id === clean.copyVersionId)
       : undefined;
+    const refreshed =
+      clean.refreshFromCurrent && copiedVersion
+        ? refreshWorkProduct(
+            state,
+            state.workProducts.find((p) => p.id === clean.productId)!,
+            copiedVersion,
+          )
+        : null;
+    if (clean.refreshFromCurrent && !copiedVersion)
+      throw new DomainError("Choose an existing version to update.");
     if (
       clean.copyVersionId &&
       (!copiedVersion ||
         copiedVersion.origin !== clean.origin ||
-        !isDeepStrictEqual(copiedVersion.content, clean.content))
+        !isDeepStrictEqual(
+          refreshed?.content ?? copiedVersion.content,
+          clean.content,
+        ))
     )
       throw new DomainError(
         "The copied content must match a retained version of this work product.",
@@ -1239,7 +1552,10 @@ export async function createWorkProductDraft(
       );
     // Copying an approved or edited document preserves its historical evidence.
     // Only a fresh AI generation may replace that evidence with current records.
-    const snapshot = copiedVersion?.snapshot ?? buildWorkProductSnapshot(state, clean);
+    const snapshot =
+      refreshed?.snapshot ??
+      copiedVersion?.snapshot ??
+      buildWorkProductSnapshot(state, clean);
     if (
       (snapshot.client?.id ?? null) !== clean.clientId ||
       (snapshot.property?.id ?? null) !== clean.propertyId
@@ -1251,7 +1567,9 @@ export async function createWorkProductDraft(
       );
     if (!isDeepStrictEqual(snapshot, clean.snapshot))
       throw new DomainError(
-        copiedVersion ? "A copied document must retain its saved source snapshot." : "The document source records changed or do not match this workspace.",
+        copiedVersion
+          ? "A copied document must retain its saved source snapshot."
+          : "The document source records changed or do not match this workspace.",
         409,
         "STALE_SOURCE",
       );
@@ -1328,8 +1646,11 @@ export async function createWorkProductDraft(
       event: "created",
       editRevision: 0,
       content,
-      actor: copiedVersion ? `${productActor} (copied retained version)` :
-        clean.origin === "sample" ? "Saved fictional sample" : "AI proposal",
+      actor: copiedVersion
+        ? `${productActor} (copied retained version)`
+        : clean.origin === "sample"
+          ? "Saved fictional sample"
+          : "AI proposal",
       createdAt: now,
     });
     await tx.insert(tables.activities).values({
@@ -1725,10 +2046,15 @@ export async function setTaskCalendar(
     if (isDeepStrictEqual(task.calendarSchedule, clean)) return;
     // The route stamps confirmation time on each attempt. Identical effective
     // schedules are retries, not new confirmations or new audit events.
-    if (task.calendarSchedule && clean &&
-      Date.parse(task.calendarSchedule.startsAt) === Date.parse(clean.startsAt) &&
+    if (
+      task.calendarSchedule &&
+      clean &&
+      Date.parse(task.calendarSchedule.startsAt) ===
+        Date.parse(clean.startsAt) &&
       Date.parse(task.calendarSchedule.endsAt) === Date.parse(clean.endsAt) &&
-      task.calendarSchedule.timeZone === clean.timeZone) return;
+      task.calendarSchedule.timeZone === clean.timeZone
+    )
+      return;
     assertCurrentRevision(workspace.revision, expectedWorkspaceRevision);
     await tx
       .update(tables.tasks)
