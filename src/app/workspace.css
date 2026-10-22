@@ -48,11 +48,32 @@
   --muted: #607084;
   --blue: #315bea;
   --action-ink: #294fb9;
-  --line: #dce2e9;
+  --line: #cbd3dc;
   --surface-soft: #f4f6fa;
   --success-ink: #2c654c;
   --warning-ink: #84551d;
   --danger-ink: #a33232;
+}
+/* Keep neutral boundaries visible on the warm page background. Only the
+   color changes; responsive rules still control which edges are drawn. */
+.sidebar,
+.task-row,
+.schedule-panel,
+.page-footer,
+.work-product-row,
+.property-preview,
+.listing-card,
+.review-toolbar,
+.listing-toolbar,
+.team-table th,
+.team-table td,
+.bottleneck,
+.team-recent,
+.modal-header,
+.modal-footer,
+.sticky-actions,
+.facts-list > div {
+  border-color: var(--line);
 }
 [hidden] {
   display: none !important;
@@ -1729,7 +1750,7 @@ mark {
   line-height: 1.7;
 }
 .secondary-priorities {
-  border-block: 1px solid #e7ecf2;
+  border-block: 1px solid var(--line);
   padding: 15px 0;
 }
 .secondary-priorities > summary {
