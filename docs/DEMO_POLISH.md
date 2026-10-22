@@ -25,3 +25,21 @@ Implemented the five priority improvements from [the aesthetic review](DEMO_AEST
 ## Presentation boundary
 
 The authenticated production conversation rehearsal and private pilot connection setup are separate from this visual pass. Use the sample workspace for the main presentation, retain its fictional-sample labels, and sign in before the showing. The audit's provisional scores for surfaces inspected only through earlier captures remain provisional.
+
+## Today panel refinement
+
+Subjective visual assessment of the new Today panels: **88/100 before, 95/100 after**. This score concerns the reviewed Today layout, not a new grade for the whole application.
+
+| Area | Before | After |
+| --- | ---: | ---: |
+| Section hierarchy and alignment | 91 | 96 |
+| Task spacing and controls | 87 | 95 |
+| Calendar and supporting-text readability | 82 | 94 |
+| Listing composition | 84 | 95 |
+| Responsive layout | 88 | 95 |
+
+Aligned the document/calendar header rules, enlarged calendar times and muted supporting text, tightened excess space before tasks, clarified the To do/Done control, and gave a single listing the full panel width with a horizontal desktop composition. At 900px and below the work areas stack to prevent squeezed tablet columns; the listing returns to a vertical card on phones. Follow-up disclosures now have an explicit keyboard focus outline.
+
+Visually checked 1280px and 1440px desktop, 1920px wide desktop, 768px tablet, and 360px phone. Measured matching 54px desktop card headers and no page overflow at tablet/phone widths. Production build passed. Scores remain design judgments: long record titles and larger real-world data sets can change density, and physical-device/browser coverage is not exhaustive.
+
+Evidence: [final desktop](screenshots/demo-polish/today-refined-desktop.png), [wide desktop](screenshots/demo-polish/today-refined-wide.png), [listing composition](screenshots/demo-polish/today-refined-listing-desktop.png), [tablet](screenshots/demo-polish/today-refined-tablet.png), [small phone](screenshots/demo-polish/today-refined-small-phone.png).

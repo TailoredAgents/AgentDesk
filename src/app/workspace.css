@@ -2176,6 +2176,7 @@ mark {
 }
 .today-primary > section > .section-heading,
 .today-secondary > .schedule-panel > .section-heading {
+  min-height: 54px;
   padding-bottom: 14px;
   margin-bottom: 14px;
   border-bottom: 1px solid var(--line);
@@ -2196,6 +2197,85 @@ mark {
 .today-secondary > .workforce-card {
   margin: 0;
 }
+.today-primary .task-scope-toggle {
+  margin-bottom: 0;
+}
+.today-primary .task-list > .task-row:first-child {
+  padding-top: 10px;
+}
+.today-primary .segmented button {
+  min-height: 32px;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.today-primary .segmented .selected {
+  color: var(--action-ink);
+  font-weight: 600;
+}
+.today-secondary .appointment {
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: 10px;
+}
+.today-secondary .appointment-time,
+.today-secondary .appointment-time > span {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.today-secondary .appointment-time > span,
+.today-secondary .calendar-footnote,
+.today-secondary .workforce-card p {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.today-secondary .calendar-footnote {
+  align-items: flex-start;
+  gap: 8px;
+}
+.today-secondary .calendar-footnote > svg {
+  margin-top: 3px;
+}
+.today-secondary .workforce-card .text-link {
+  font-size: 13px;
+  color: var(--success-ink);
+}
+.today-primary .preview-properties > .property-preview:only-child {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  align-items: stretch;
+}
+.today-primary .property-preview:only-child .preview-image {
+  height: 100%;
+  min-height: 170px;
+}
+.today-primary .property-preview:only-child .preview-details {
+  align-self: center;
+  padding: 18px;
+}
+.today-primary .preview-details h3 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.today-primary .property-progress-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+.today-primary .secondary-priorities > summary:hover {
+  color: var(--action-ink);
+}
+.today-primary .secondary-priorities > summary:focus-visible {
+  outline: 3px solid #9eaff8;
+  outline-offset: 6px;
+  border-radius: 3px;
+}
+@media (max-width: 900px) {
+  .today-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 @media (max-width: 600px) {
   .today-grid,
   .today-grid > .today-primary,
@@ -2210,5 +2290,11 @@ mark {
   }
   .today-primary > .secondary-priorities {
     padding-block: 14px;
+  }
+  .today-primary .preview-properties > .property-preview:only-child {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .today-primary .property-preview:only-child .preview-image {
+    height: 170px;
   }
 }
