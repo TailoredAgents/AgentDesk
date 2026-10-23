@@ -60,6 +60,45 @@ test("signed sessions reject tampering, expiry, future issuance and password rot
     assert.equal(verifySession(token, now), false);
   }));
 
+test("demo login accepts a four-digit PIN or five-letter password with exact matching", () =>
+  withAuthEnvironment(async () => {
+    for (const [password, wrongPassword] of [
+      ["0427", "427"],
+      ["hello", "Hello"],
+    ]) {
+      process.env.DEMO_PASSWORD = password;
+      assert.equal(authConfiguration().ready, true);
+      const attempt = (candidate: string) =>
+        login(
+          new Request("https://agentdesk.example/api/auth/login", {
+            method: "POST",
+            headers: {
+              origin: "https://agentdesk.example",
+              "content-type": "application/json",
+              "x-forwarded-for": `demo-pin-test-${password}`,
+            },
+            body: JSON.stringify({ password: candidate }),
+          }),
+        );
+      const rejected = await attempt(wrongPassword);
+      assert.equal(rejected.status, 401);
+      assert.equal(rejected.headers.get("set-cookie"), null);
+      const accepted = await attempt(password);
+      assert.equal(accepted.status, 200);
+      const cookie = accepted.headers.get("set-cookie") ?? "";
+      assert.match(cookie, /HttpOnly/i);
+      assert.match(cookie, /Secure/i);
+      assert.equal(
+        isAuthorized(
+          new Request("https://agentdesk.example/api/workspace", {
+            headers: { cookie: cookie.split(";")[0] },
+          }),
+        ),
+        true,
+      );
+    }
+  }));
+
 test("production fails closed without secrets and development bypass is local only", () =>
   withAuthEnvironment(() => {
     delete process.env.DEMO_PASSWORD;

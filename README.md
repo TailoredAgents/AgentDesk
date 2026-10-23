@@ -99,7 +99,7 @@ Copy [`.env.example`](.env.example) to `.env`. Never commit credentials or expos
 | `OPENAI_MODEL`             | Text/structured output model; default `gpt-6.1-sol`, using low reasoning for interactive latency. Use a compatible model available to your project.     |
 | `OPENAI_TRANSCRIBE_MODEL`  | Audio transcription model; default `gpt-transcribe`.                                                                                                   |
 | `OPENAI_REWRITE_MODEL`     | Optional rewrite-specific model. If blank, uses `OPENAI_MODEL`. Sol uses low reasoning; other models retain their own defaults.                         |
-| `DEMO_PASSWORD`            | Required in production, at least 12 characters. Shared password for the fictional sample workspace.                                                               |
+| `DEMO_PASSWORD`            | Required in production, at least 4 characters (a four-digit demo PIN or a longer password). Shared password for the fictional sample workspace.                                                               |
 | `SESSION_SECRET`           | Required in production, at least 32 characters. Use a cryptographically random value.                                                                  |
 | `APP_URL`                  | Optional canonical origin for mutation Origin checks, such as `https://agentdesk.example.com`. If set, access the app using that exact origin.         |
 | `PORT`                     | Hosting port. Render supplies this automatically; Next.js honors it.                                                                                   |
@@ -155,7 +155,7 @@ The checked-in [render.yaml](render.yaml) describes a Node web service and a pri
 
 1. Put this repository in your Git provider and create a Render Blueprint from it.
 2. Review the web/database plans and region in `render.yaml`. The blueprint is deliberately configured for a single application instance and durable PostgreSQL.
-3. Supply a unique `DEMO_PASSWORD` of at least 12 characters when Render prompts. The blueprint generates `SESSION_SECRET`, wires `DATABASE_URL` to the database's private connection string, and sets `APP_URL` from the service's `RENDER_EXTERNAL_URL`.
+3. Supply a unique `DEMO_PASSWORD` of at least 4 characters (a four-digit demo PIN or a longer password) when Render prompts. The blueprint generates `SESSION_SECRET`, wires `DATABASE_URL` to the database's private connection string, and sets `APP_URL` from the service's `RENDER_EXTERNAL_URL`.
 4. Optionally add `OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_TRANSCRIBE_MODEL` in the service's Environment settings. A key is not required to review saved sample results. When attaching a custom domain, replace the blueprint's `APP_URL` self-reference with that exact public HTTPS origin and apply it to the service.
 5. Render builds with `npm ci --include=dev && npm run build`. Before deployment it runs `npm run config:check`, applies migrations, and runs the idempotent seed. `npm run start` repeats the configuration check before starting the service, which binds to `0.0.0.0` and uses Render's `PORT`.
 6. Confirm `/api/health` is healthy, the sign-in screen protects the workspace, and an approved sample task persists after a restart. Keep the sample designation visible during the pilot.

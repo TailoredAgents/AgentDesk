@@ -2,7 +2,7 @@ export type DeploymentEnvironment = Readonly<
   Record<string, string | undefined>
 >;
 
-export const MIN_WORKSPACE_PASSWORD_LENGTH = 12;
+export const MIN_WORKSPACE_PASSWORD_LENGTH = 4;
 export const MIN_SESSION_SECRET_LENGTH = 32;
 
 /** Fixed messages only: never include environment values or URL parser errors. */
@@ -16,7 +16,7 @@ export function validateWorkspaceAccessEnvironment(
   if (!password) {
     errors.push("DEMO_PASSWORD is required for production workspace access.");
   } else if (password.length < MIN_WORKSPACE_PASSWORD_LENGTH) {
-    errors.push("DEMO_PASSWORD must contain at least 12 characters.");
+    errors.push("DEMO_PASSWORD must contain at least 4 characters.");
   }
 
   if (!secret) {

@@ -43,11 +43,11 @@ test("missing deployment settings fail regardless of NODE_ENV", () => {
 test("access validation and deployment checks share the exact password and secret minimums", () => {
   const tooShort = {
     ...valid,
-    DEMO_PASSWORD: "x".repeat(11),
+    DEMO_PASSWORD: "x".repeat(3),
     SESSION_SECRET: "y".repeat(31),
   };
   assert.deepEqual(validateDeploymentEnvironment(tooShort), [
-    "DEMO_PASSWORD must contain at least 12 characters.",
+    "DEMO_PASSWORD must contain at least 4 characters.",
     "SESSION_SECRET must contain at least 32 characters.",
   ]);
   assert.deepEqual(
@@ -57,7 +57,7 @@ test("access validation and deployment checks share the exact password and secre
   assert.deepEqual(
     validateDeploymentEnvironment({
       ...valid,
-      DEMO_PASSWORD: "x".repeat(12),
+      DEMO_PASSWORD: "0427",
       SESSION_SECRET: "y".repeat(32),
     }),
     [],
@@ -126,7 +126,7 @@ test("CLI rejects invalid production configuration without printing supplied val
   const privateValues = {
     DATABASE_URL:
       "mysql://private-user:private-database-password@private-db.example/app",
-    DEMO_PASSWORD: "DO-NOT-LOG",
+    DEMO_PASSWORD: "x9Q",
     SESSION_SECRET: "PRIVATE-SECRET",
     APP_URL: "http://private-user:private-app-password@private-app.example",
     OPENAI_API_KEY: "private-optional-openai-key",
@@ -144,7 +144,7 @@ test("CLI rejects invalid production configuration without printing supplied val
     "private-db.example",
   ])
     assert.equal(output.includes(fragment), false);
-  assert.match(output, /DEMO_PASSWORD must contain at least 12 characters/);
+  assert.match(output, /DEMO_PASSWORD must contain at least 4 characters/);
   assert.match(output, /SESSION_SECRET must contain at least 32 characters/);
   assert.match(output, /DATABASE_URL must be a valid/);
   assert.match(output, /APP_URL must be a valid HTTPS origin/);

@@ -26,7 +26,7 @@ Show one connected workflow: notice an evidenced commitment, prepare a useful se
 
 ## Before the meeting
 
-- Open the deployed workspace and sign in. In Render's AgentDesk web service, **Environment** holds `OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_TRANSCRIBE_MODEL`; keep the key server-side. `DEMO_PASSWORD` must have at least 12 characters and `SESSION_SECRET` at least 32. Save environment changes and let the deployment finish.
+- Open the deployed workspace and sign in. In Render's AgentDesk web service, **Environment** holds `OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_TRANSCRIBE_MODEL`; keep the key server-side. `DEMO_PASSWORD` must have at least 4 characters (a four-digit demo PIN or a longer password) and `SESSION_SECRET` at least 32. Save environment changes and let the deployment finish.
 - Run the live evaluation described in [AI evaluation](AI_EVALUATION.md) against the same OpenAI project and model settings. A configured key alone does not establish model access or quality. Rehearse one authorized recording in the actual presentation browser. If either check fails, use the saved example.
 - In Workspace settings, select Jordan Ellis in **Agent preview**. This changes the selected human agent's records and style, not authorization. Team remains a shared leadership preview.
 - Restore the fictional workspace through Settings only when ready to discard demonstration edits. The exact confirmation phrase is `RESTORE FICTIONAL WORKSPACE`. Reset is restricted to the designated sample workspace; it restores fictional seed records, not production CRM data. Keep real customer information out of this demo workspace.
